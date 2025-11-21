@@ -8,6 +8,8 @@
 │   ├── page.tsx            # Home page
 │   ├── about/
 │   │   └── page.tsx        # About page
+│   ├── features/
+│   │   └── page.tsx        # Features page
 │   └── globals.css         # Global styles
 │
 ├── components/
@@ -28,6 +30,14 @@
 │   │   ├── Vision.tsx      # Vision statement
 │   │   └── CallToAction.tsx # CTA section
 │   │
+│   ├── features/           # Features page components
+│   │   ├── FeaturesHero.tsx # Features hero section
+│   │   ├── FeaturesTabs.tsx # Tab navigation component
+│   │   └── tabs/
+│   │       ├── VideoAnalysisTab.tsx  # Video analysis tab
+│   │       ├── CommentaryTab.tsx     # Commentary tab
+│   │       └── PredictionsTab.tsx    # Predictions tab
+│   │
 │   └── ui/
 │       └── Button.tsx      # Reusable button component
 │
@@ -40,6 +50,7 @@
 
 - **Home (/)** - Landing page with hero, stats, features
 - **About (/about)** - Mission, vision, how it works
+- **Features (/features)** - Detailed features with tabs (Video Analysis, Commentary, Predictions)
 
 ## SEO Features
 
