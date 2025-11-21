@@ -35,7 +35,7 @@ export default function KeyFeatures() {
   ];
 
   return (
-    <section id="features" className="py-20 px-6 bg-[#0f1f3a]">
+    <section id="features" className="py-20 px-6 bg-gray-900">
       <div className="container mx-auto">
         <h2 className="text-4xl font-bold text-white text-center mb-12">
           KEY FEATURES
@@ -47,7 +47,7 @@ export default function KeyFeatures() {
             return (
               <div
                 key={index}
-                className="bg-[#1a2942] border border-gray-700 rounded-xl p-6 hover:border-emerald-500 transition-colors group"
+                className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-emerald-500 transition-colors group"
               >
                 <div className="mb-5">
                   <Icon className="w-10 h-10 text-emerald-400 group-hover:scale-110 transition-transform" />

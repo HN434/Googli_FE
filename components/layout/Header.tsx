@@ -17,14 +17,14 @@ export default function Header() {
           <Link href="/#features" className="text-gray-300 hover:text-white transition-colors">
             Features
           </Link>
-          <Link href="#pricing" className="text-gray-300 hover:text-white transition-colors">
+          {/* <Link href="#pricing" className="text-gray-300 hover:text-white transition-colors">
             Pricing
-          </Link>
+          </Link> */}
         </div>
 
         <div className="flex items-center gap-4">
-          <Button variant="ghost">Login</Button>
-          <Button variant="primary">Sign Up</Button>
+          {/* <Button variant="ghost">Login</Button>
+          <Button variant="primary">Sign Up</Button> */}
         </div>
       </nav>
     </header>
