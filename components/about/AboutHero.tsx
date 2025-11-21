@@ -1,6 +1,6 @@
 export default function AboutHero() {
   return (
-    <section className="relative pt-40 pb-24 px-6 bg-[#0a1628]">
+    <section className="relative pt-40 pb-24 px-6 bg-gray-900">
       <div className="container mx-auto text-center max-w-4xl">
         <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">
           Our mission:

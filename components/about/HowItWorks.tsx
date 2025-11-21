@@ -20,7 +20,7 @@ export default function HowItWorks() {
   ];
 
   return (
-    <section className="py-24 px-6">
+    <section className="py-24 px-6 bg-gray-900">
       <div className="container mx-auto max-w-6xl">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {steps.map((step, index) => {
@@ -28,7 +28,7 @@ export default function HowItWorks() {
             return (
               <div
                 key={index}
-                className="bg-[#0f1f3a] border border-gray-800 rounded-lg p-8 hover:border-emerald-500/50 transition-all duration-300 group"
+                className="bg-gray-800/50 border border-gray-700 rounded-lg p-8 hover:border-emerald-500/50 transition-all duration-300 group"
               >
                 <div className="mb-6">
                   <Icon className="w-12 h-12 text-emerald-400 group-hover:scale-110 transition-transform" />
