@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import cricketApi from '@/services/cricketApi';
 import pollyService from '@/services/pollyService';
+
+// Backend WebSocket URL
+const BACKEND_WS_URL = 'https://z34lswxm-8001.inc1.devtunnels.ms/api/commentary/ws/match/';
 
 interface Match {
   id: string;
@@ -53,6 +56,9 @@ export default function CommentaryTab() {
   const [isAutoRefreshEnabled, setIsAutoRefreshEnabled] = useState(true);
   const [audioService, setAudioService] = useState('Browser Speech Synthesis');
 
+  // WebSocket Reference
+  const wsRef = useRef<WebSocket | null>(null);
+
   useEffect(() => {
     setAudioService(pollyService.getAudioServiceName());
   }, [isVoiceEnabled]);
@@ -63,6 +69,15 @@ export default function CommentaryTab() {
       loadMatches();
     }
   }, [apiKey]);
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
 
   const loadMatches = async () => {
     setMatchesLoading(true);
@@ -82,48 +97,157 @@ export default function CommentaryTab() {
     setShowApiModal(false);
   };
 
+  const connectWebSocket = (matchId: string) => {
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+
+    try {
+      const ws = new WebSocket(`${BACKEND_WS_URL}${matchId}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket Connected');
+        setCommentaryError(null);
+        setIsCommentaryFetching(true);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+
+          if (message.type === 'status') {
+            console.log('Status:', message.data);
+          } else if (message.type === 'commentary') {
+            const data = message.data;
+
+            // Map Backend CommentaryLine to Frontend CommentaryEntry
+            const incomingEntries: CommentaryEntry[] = (data.lines || []).map((line: any) => ({
+              key: line.id,
+              text: line.text,
+              over: line.over_number,
+              ball: line.ball_number,
+              event: line.event_type,
+              runs: line.runs || 0,
+              wicket: line.event_type === 'wicket' || (line.wickets && line.wickets > 0),
+              isNew: true,
+              updated: false,
+              timestamp: new Date(line.timestamp).getTime(),
+            }));
+
+            if (incomingEntries.length > 0) {
+              setNewEntries(incomingEntries);
+              setCommentaryEntries(prev => {
+                // Prepend new entries and keep unique by key
+                const combined = [...incomingEntries, ...prev];
+                const unique = Array.from(new Map(combined.map(item => [item.key, item])).values());
+                // Sort by timestamp descending (newest first)
+                return unique.sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
+              });
+
+              // Voice Commentary
+              if (isVoiceEnabled) {
+                incomingEntries.forEach((entry) => {
+                  pollyService.speakCommentary(entry.text, commentaryLanguage, commentaryVoice);
+                });
+              }
+            }
+
+            // Update Match Status / Miniscore
+            if (data.miniscore) {
+              setMiniscore(data.miniscore);
+            } else if (data.match_status_info || data.score) {
+              const statusInfo = data.match_status_info || {};
+              const score = data.score || statusInfo.score || {};
+
+              // Fallback: Construct a partial miniscore object if full miniscore is missing
+              const constructedMiniscore = {
+                inningsid: '1', // Placeholder
+                inningsscores: {
+                  inningsscore: [
+                    {
+                      inningsid: '1',
+                      runs: score.runs,
+                      wickets: score.wickets,
+                      overs: score.overs,
+                      batteamshortname: statusInfo.team1 || 'Team 1', // Simplified
+                    }
+                  ]
+                },
+                custstatus: statusInfo.status || data.match_status,
+                batsmanstriker: null,
+                batsmannonstriker: null,
+                bowlerstriker: null,
+                crr: null,
+                partnership: null,
+                lastwkt: null
+              };
+
+              setMiniscore(constructedMiniscore);
+            }
+
+            if (data.match_status_info) {
+              setMatchHeader({
+                status: data.match_status_info.status,
+                state: data.match_status_info.state,
+                team1: { name: data.match_status_info.team1 },
+                team2: { name: data.match_status_info.team2 }
+              });
+            }
+          } else if (message.type === 'error') {
+            setCommentaryError(message.data.error);
+          }
+        } catch (e) {
+          console.error('Error parsing WS message:', e);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket Error:', error);
+        setCommentaryError('Connection error. Retrying...');
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket Disconnected');
+        if (isCommentaryFetching) {
+          // Optional: Implement reconnection logic here if needed
+          // For now, we just update state
+          setIsCommentaryFetching(false);
+        }
+      };
+
+    } catch (error: any) {
+      setCommentaryError(`Failed to connect: ${error.message}`);
+      setIsCommentaryFetching(false);
+    }
+  };
+
   const handleStartCommentary = () => {
     if (!selectedMatchId) return;
-
-    setIsCommentaryFetching(true);
-    setCommentaryError(null);
-
-    cricketApi.startLiveCommentaryPolling(
-      selectedMatchId,
-      (result) => {
-        setCommentaryEntries(result.commentary);
-        setMiniscore(result.miniscore);
-        setMatchHeader(result.matchHeader);
-        setNewEntries(result.newEntries);
-        setUpdatedEntries(result.updatedEntries);
-
-        if (isVoiceEnabled && result.newEntries.length > 0) {
-          result.newEntries.forEach((entry) => {
-            pollyService.speakCommentary(entry.text, commentaryLanguage, commentaryVoice);
-          });
-        }
-      },
-      isAutoRefreshEnabled ? 10000 : 30000
-    );
+    connectWebSocket(selectedMatchId);
   };
 
   const handleStopCommentary = () => {
     setIsCommentaryFetching(false);
-    cricketApi.stopLiveCommentaryPolling();
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
     pollyService.stop();
   };
 
   const getEventBadge = (entry: CommentaryEntry) => {
-    if (entry.wicket || (entry.event && entry.event.toUpperCase() === 'WICKET')) {
+    const eventType = (entry.event || '').toUpperCase();
+    if (entry.wicket || eventType === 'WICKET') {
       return { emoji: '🎯', label: 'WICKET', className: 'bg-gradient-to-r from-red-600 to-red-800' };
     }
-    if (entry.runs === 6 || (entry.event && entry.event.toUpperCase() === 'SIX')) {
+    if (entry.runs === 6 || eventType === 'SIX') {
       return { emoji: '6️⃣', label: 'SIX', className: 'bg-gradient-to-r from-amber-500 to-orange-600' };
     }
-    if (entry.runs === 4 || (entry.event && entry.event.toUpperCase() === 'FOUR')) {
+    if (entry.runs === 4 || eventType === 'FOUR') {
       return { emoji: '4️⃣', label: 'FOUR', className: 'bg-gradient-to-r from-emerald-500 to-green-600' };
     }
-    if (entry.event && entry.event.toLowerCase() === 'over-break') {
+    if (eventType === 'OVER-BREAK' || eventType === 'OVER') {
       return { emoji: '⏸️', label: 'OVER BREAK', className: 'bg-gradient-to-r from-cyan-500 to-blue-600' };
     }
     return null;
@@ -385,10 +509,10 @@ export default function CommentaryTab() {
                   </span>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-bold">
-                      {primaryInnings ? `${primaryInnings.runs}/${primaryInnings.wickets}` : '--/--'}
+                      {primaryInnings ? `${primaryInnings.runs || 0}/${primaryInnings.wickets || 0}` : '--/--'}
                     </span>
                     {primaryInnings && (
-                      <span className="text-sm opacity-80">{primaryInnings.overs} ov</span>
+                      <span className="text-sm opacity-80">{primaryInnings.overs || 0} ov</span>
                     )}
                   </div>
                 </div>
