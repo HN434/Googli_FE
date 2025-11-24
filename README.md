@@ -2,7 +2,19 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+### 1. Environment Setup
+
+First, configure your environment variables:
+
+```bash
+# Copy the example environment file
+cp .env.example .env.local
+
+# Edit .env.local and add your RapidAPI key
+# See ENV_SETUP.md for detailed instructions
+```
+
+### 2. Run the Development Server
 
 ```bash
 npm run dev

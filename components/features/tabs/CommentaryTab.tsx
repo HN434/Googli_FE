@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import cricketApi from '@/services/cricketApi';
 import pollyService from '@/services/pollyService';
 
-// Backend WebSocket URL
-const BACKEND_WS_URL = 'https://z34lswxm-8001.inc1.devtunnels.ms/api/commentary/ws/match/';
+// Backend WebSocket URL from environment variable
+const BACKEND_WS_URL = process.env.NEXT_PUBLIC_BACKEND_WS_URL || 'https://z34lswxm-8001.inc1.devtunnels.ms/api/commentary/ws/match/';
 
 interface Match {
   id: string;
@@ -34,15 +34,11 @@ export default function CommentaryTab() {
   // State management
   const [matches, setMatches] = useState<Match[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<string>('');
-  const [apiKey, setApiKey] = useState<string>('');
-  const [tempApiKey, setTempApiKey] = useState<string>('');
-  const [showApiModal, setShowApiModal] = useState(false);
 
   const [commentaryEntries, setCommentaryEntries] = useState<CommentaryEntry[]>([]);
   const [miniscore, setMiniscore] = useState<any>(null);
   const [matchHeader, setMatchHeader] = useState<any>(null);
   const [newEntries, setNewEntries] = useState<CommentaryEntry[]>([]);
-  const [updatedEntries, setUpdatedEntries] = useState<CommentaryEntry[]>([]);
 
   const [isCommentaryFetching, setIsCommentaryFetching] = useState(false);
   const [commentaryError, setCommentaryError] = useState<string | null>(null);
@@ -63,12 +59,16 @@ export default function CommentaryTab() {
     setAudioService(pollyService.getAudioServiceName());
   }, [isVoiceEnabled]);
 
+  // Initialize API key from environment variable and load matches
   useEffect(() => {
+    const apiKey = process.env.NEXT_PUBLIC_RAPIDAPI_KEY;
     if (apiKey) {
       cricketApi.setApiKey(apiKey);
       loadMatches();
+    } else {
+      setMatchesError('API key not configured. Please set NEXT_PUBLIC_RAPIDAPI_KEY in .env.local');
     }
-  }, [apiKey]);
+  }, []);
 
   // Cleanup WebSocket on unmount
   useEffect(() => {
@@ -90,11 +90,6 @@ export default function CommentaryTab() {
     } finally {
       setMatchesLoading(false);
     }
-  };
-
-  const handleSaveApiKey = () => {
-    setApiKey(tempApiKey);
-    setShowApiModal(false);
   };
 
   const connectWebSocket = (matchId: string) => {
@@ -263,104 +258,45 @@ export default function CommentaryTab() {
 
   const inningsScores = miniscore?.inningsscores?.inningsscore || [];
   const primaryInnings = inningsScores.find((inning: any) => inning.inningsid === miniscore?.inningsid) || inningsScores[0];
-  const secondaryInnings = inningsScores.filter((inning: any) => inning !== primaryInnings);
   const striker = miniscore?.batsmanstriker;
   const nonStriker = miniscore?.batsmannonstriker;
   const bowler = miniscore?.bowlerstriker;
   const statusText = matchHeader?.status || miniscore?.custstatus || matchHeader?.state || '';
-  const lastWicket = miniscore?.lastwkt;
-
-  const updateSummaryParts = [];
-  if (newEntries.length) {
-    updateSummaryParts.push(`${newEntries.length} new ball${newEntries.length === 1 ? '' : 's'}`);
-  }
-  if (updatedEntries.length) {
-    updateSummaryParts.push(`${updatedEntries.length} updated`);
-  }
-  const updateSummaryText = updateSummaryParts.join(' • ');
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="mb-12">
-        <div className="flex justify-between items-center gap-8 flex-wrap">
-          <div>
-            <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-purple-500 via-violet-600 to-purple-700 bg-clip-text text-transparent">
-              🎙️ Live Ball-by-Ball Commentary
-            </h1>
-            <p className="text-lg text-gray-400">
-              AI-powered cricket commentary with professional insights
-            </p>
-          </div>
-          <button
-            className="px-6 py-3 bg-gradient-to-r from-purple-500 to-violet-600 text-white font-semibold rounded-lg hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
-            onClick={() => setShowApiModal(true)}
-          >
-            {apiKey ? '🔑 API Key Set' : '🔑 Set API Key'}
-          </button>
-        </div>
+      <div className="mb-8 text-center">
+        <h1 className="text-3xl md:text-4xl font-bold mb-3 text-emerald-400">
+          Live Ball-by-Ball Commentary
+        </h1>
+        <p className="text-gray-400 max-w-2xl mx-auto">
+          Choose a live match scenario and our AI will generate a live commentary stream for you.
+        </p>
       </div>
 
-      {/* API Key Modal */}
-      {showApiModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowApiModal(false)}>
-          <div className="bg-gray-900 p-8 rounded-2xl max-w-lg w-full mx-4 shadow-2xl border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-bold text-white mb-4">RapidAPI Configuration</h2>
-            <p className="text-sm text-amber-400 bg-amber-900/20 border border-amber-600/30 px-3 py-2 rounded-lg mb-6">
-              ⚠️ Warning: In production, API keys should be stored server-side. This is for development/demo purposes only.
-            </p>
-            <input
-              type="password"
-              placeholder="Enter RapidAPI Key (optional)"
-              value={tempApiKey}
-              onChange={(e) => setTempApiKey(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-800 border-2 border-gray-700 rounded-lg text-white focus:outline-none focus:border-purple-500 mb-6"
-            />
-            <div className="flex gap-4 justify-end">
-              <button
-                onClick={handleSaveApiKey}
-                className="px-6 py-2 bg-gradient-to-r from-purple-500 to-violet-600 text-white font-semibold rounded-lg hover:shadow-lg transition-all"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => {
-                  setTempApiKey('');
-                  setApiKey('');
-                  setShowApiModal(false);
-                }}
-                className="px-6 py-2 bg-gray-700 text-gray-300 font-semibold rounded-lg hover:bg-gray-600 transition-all"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Main Content Grid */}
-      <div className="grid gap-8">
-        {/* Match Selection Panel */}
-        <div className="bg-gray-900 rounded-xl p-6 shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all duration-200 border border-gray-800">
-          <h3 className="text-xl font-bold text-white mb-4">⚾ Match Selection</h3>
+      <div className="grid lg:grid-cols-2 gap-6 max-w-6xl mx-auto">
+        {/* Left Panel - Controls */}
+        <div className="bg-[#1a2942] rounded-xl p-6 border border-gray-700">
+          <h3 className="text-lg font-semibold text-white mb-4">Select Live Match</h3>
 
           {matchesLoading && (
-            <p className="text-gray-400 italic">Loading matches...</p>
+            <p className="text-gray-400 italic text-sm">Loading matches...</p>
           )}
 
           {matchesError && (
-            <div className="bg-red-900/20 border-2 border-red-500/50 rounded-lg p-4 text-red-400">
+            <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-3 text-red-400 text-sm mb-4">
               <p>⚠️ {matchesError}</p>
             </div>
           )}
 
           {!matchesLoading && !matchesError && matches && matches.length > 0 && (
-            <div className="mb-4">
-              <label className="block font-semibold text-gray-300 mb-2">Select Match:</label>
+            <div className="mb-6">
               <select
                 value={selectedMatchId || ''}
                 onChange={(e) => setSelectedMatchId(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-800 border-2 border-gray-700 rounded-lg text-white focus:outline-none focus:border-purple-500 transition-colors"
+                className="w-full px-4 py-3 bg-[#0f1f3a] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-emerald-500 transition-colors"
               >
                 <option value="">-- Select a Match --</option>
                 {matches.map((match) => {
@@ -380,22 +316,19 @@ export default function CommentaryTab() {
             </div>
           )}
 
-          {!matchesLoading && (!matches || matches.length === 0) && (
-            <p className="text-gray-400">No matches available. Set API key to load matches.</p>
+          {!matchesLoading && (!matches || matches.length === 0) && !matchesError && (
+            <p className="text-gray-400 text-sm mb-6">
+              No live matches available at the moment.
+            </p>
           )}
-        </div>
 
-        {/* Commentary Settings Panel */}
-        <div className="bg-gray-900 rounded-xl p-6 shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all duration-200 border border-gray-800">
-          <h3 className="text-xl font-bold text-white mb-4">⚙️ Commentary Settings</h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {/* Commentary Settings */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
             <div>
-              <label className="block font-semibold text-gray-300 mb-2">Language:</label>
               <select
                 value={commentaryLanguage}
                 onChange={(e) => setCommentaryLanguage(e.target.value)}
-                className="w-full px-4 py-2 bg-gray-800 border-2 border-gray-700 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 bg-[#0f1f3a] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
               >
                 <option value="English">English</option>
                 <option value="Hindi">Hindi</option>
@@ -405,25 +338,23 @@ export default function CommentaryTab() {
             </div>
 
             <div>
-              <label className="block font-semibold text-gray-300 mb-2">Tone:</label>
               <select
                 value={commentaryTone}
                 onChange={(e) => setCommentaryTone(e.target.value)}
-                className="w-full px-4 py-2 bg-gray-800 border-2 border-gray-700 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 bg-[#0f1f3a] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
               >
                 <option value="Calm">Calm</option>
-                <option value="Exciting">Exciting</option>
+                <option value="Exciting">Excited</option>
                 <option value="Professional">Professional</option>
                 <option value="Dramatic">Dramatic</option>
               </select>
             </div>
 
             <div>
-              <label className="block font-semibold text-gray-300 mb-2">Voice:</label>
               <select
                 value={commentaryVoice}
                 onChange={(e) => setCommentaryVoice(e.target.value)}
-                className="w-full px-4 py-2 bg-gray-800 border-2 border-gray-700 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 bg-[#0f1f3a] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
               >
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
@@ -431,215 +362,192 @@ export default function CommentaryTab() {
             </div>
           </div>
 
-          <div className="mb-4">
-            <label className="flex items-center gap-2 cursor-pointer text-gray-300 font-semibold">
+          {/* Start Button */}
+          <div className="mb-6">
+            {!isCommentaryFetching ? (
+              <button
+                className="w-full px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleStartCommentary}
+                disabled={!selectedMatchId}
+              >
+                Start Commentary
+              </button>
+            ) : (
+              <button
+                className="w-full px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-all"
+                onClick={handleStopCommentary}
+              >
+                Stop Commentary
+              </button>
+            )}
+          </div>
+
+          {/* Additional Options */}
+          <div className="space-y-3 text-sm">
+            <label className="flex items-center gap-2 cursor-pointer text-gray-300">
               <input
                 type="checkbox"
                 checked={isVoiceEnabled}
                 onChange={(e) => setIsVoiceEnabled(e.target.checked)}
-                className="w-5 h-5 cursor-pointer"
+                className="w-4 h-4 cursor-pointer accent-emerald-500"
               />
-              🔊 Voice Commentary
+              Voice Commentary
             </label>
             {isVoiceEnabled && (
-              <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg text-sm font-medium w-fit">
-                <span className="opacity-90">Audio:</span>
-                <span className="font-semibold mr-2">{audioService}</span>
+              <div className="ml-6 flex items-center gap-2 text-xs text-gray-400">
+                <span>Audio: {audioService}</span>
                 <button
-                  className="px-2 py-1 bg-white/20 border border-white/30 rounded text-xs font-bold hover:bg-white/30 transition-all"
-                  onClick={() => pollyService.speakCommentary('This is a test of the voice commentary system. Welcome to CrickTrack AI!', commentaryLanguage, commentaryVoice)}
+                  className="px-2 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded text-emerald-400 hover:bg-emerald-500/30 transition-all"
+                  onClick={() => pollyService.speakCommentary('This is a test of the voice commentary system. Welcome to Googli AI!', commentaryLanguage, commentaryVoice)}
                   title="Test voice output"
                 >
-                  🔊 Test
+                  Test
                 </button>
               </div>
             )}
-          </div>
 
-          <div className="mb-6">
-            <label className="flex items-center gap-2 cursor-pointer text-gray-300 font-semibold">
+            <label className="flex items-center gap-2 cursor-pointer text-gray-300">
               <input
                 type="checkbox"
                 checked={isAutoRefreshEnabled}
                 onChange={(e) => setIsAutoRefreshEnabled(e.target.checked)}
-                className="w-5 h-5 cursor-pointer"
+                className="w-4 h-4 cursor-pointer accent-emerald-500"
               />
-              🔄 Auto-Refresh (Live)
+              Auto-Refresh (Live)
             </label>
-          </div>
-
-          <div className="flex gap-4">
-            {!isCommentaryFetching ? (
-              <button
-                className="flex-1 px-6 py-4 bg-gradient-to-r from-emerald-500 to-green-600 text-white text-lg font-semibold rounded-lg hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                onClick={handleStartCommentary}
-                disabled={!selectedMatchId}
-              >
-                ▶️ Start Live Commentary
-              </button>
-            ) : (
-              <button
-                className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600 text-white text-lg font-semibold rounded-lg hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
-                onClick={handleStopCommentary}
-              >
-                ⏹️ Stop Commentary
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Commentary Display Panel */}
-        <div className="bg-gray-900 rounded-xl p-6 shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all duration-200 border border-gray-800">
+        {/* Right Panel - Commentary Log */}
+        <div className="bg-[#1a2942] rounded-xl p-6 border border-gray-700">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold text-white">📣 Live Commentary</h3>
+            <h3 className="text-lg font-semibold text-white">Commentary Log</h3>
             {isCommentaryFetching && (
-              <span className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-full text-sm font-semibold animate-pulse">
-                <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
-                Live • Auto-Updating
+              <span className="flex items-center gap-2 px-3 py-1 bg-red-500/20 border border-red-500/30 text-red-400 rounded-full text-xs font-semibold">
+                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                LIVE
               </span>
             )}
           </div>
 
           {miniscore && (
-            <div className="bg-gradient-to-r from-slate-900 to-gray-800 text-gray-100 rounded-xl p-5 mb-4">
+            <div className="bg-[#0f1f3a] border border-gray-700 rounded-lg p-4 mb-4">
               <div className="flex justify-between items-center gap-4 flex-wrap mb-3">
                 <div className="flex items-baseline gap-3">
-                  <span className="text-sm uppercase tracking-wide opacity-75">
+                  <span className="text-xs uppercase tracking-wide text-gray-400">
                     {primaryInnings?.batteamshortname || matchHeader?.teamdetails?.batteamname || '—'}
                   </span>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold">
+                    <span className="text-2xl font-bold text-white">
                       {primaryInnings ? `${primaryInnings.runs || 0}/${primaryInnings.wickets || 0}` : '--/--'}
                     </span>
                     {primaryInnings && (
-                      <span className="text-sm opacity-80">{primaryInnings.overs || 0} ov</span>
+                      <span className="text-xs text-gray-400">{primaryInnings.overs || 0} ov</span>
                     )}
                   </div>
                 </div>
                 {statusText && (
-                  <div className="bg-white/10 px-4 py-1 rounded-full font-semibold text-sm">
+                  <div className="bg-emerald-500/20 border border-emerald-500/30 px-3 py-1 rounded-full font-semibold text-xs text-emerald-400">
                     {statusText}
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
-                <div className="flex justify-between gap-3 bg-white/5 px-3 py-2 rounded-lg text-sm">
-                  <span className="uppercase text-xs tracking-wide opacity-80">Striker</span>
-                  <span className="font-semibold">{striker?.name || '—'}</span>
-                  <span className="font-medium opacity-90">
-                    {striker ? `${striker.runs || 0} (${striker.balls || 0})` : ''}
+              <div className="flex flex-wrap items-center gap-4 text-sm">
+                {/* Striker */}
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 text-xs">Striker</span>
+                  <span className="text-white font-bold">
+                    {striker?.name || '—'}
                   </span>
+                  {striker && (
+                    <span className="text-gray-400 text-xs">
+                      {striker.runs || 0}({striker.balls || 0})
+                    </span>
+                  )}
                 </div>
-                <div className="flex justify-between gap-3 bg-white/5 px-3 py-2 rounded-lg text-sm">
-                  <span className="uppercase text-xs tracking-wide opacity-80">Non-striker</span>
-                  <span className="font-semibold">{nonStriker?.name || '—'}</span>
-                  <span className="font-medium opacity-90">
-                    {nonStriker ? `${nonStriker.runs || 0} (${nonStriker.balls || 0})` : ''}
+
+                {/* Non-striker */}
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 text-xs">Non-striker</span>
+                  <span className="text-gray-300">
+                    {nonStriker?.name || '—'}
                   </span>
+                  {nonStriker && (
+                    <span className="text-gray-400 text-xs">
+                      {nonStriker.runs || 0}({nonStriker.balls || 0})
+                    </span>
+                  )}
                 </div>
-                <div className="flex justify-between gap-3 bg-white/5 px-3 py-2 rounded-lg text-sm">
-                  <span className="uppercase text-xs tracking-wide opacity-80">Bowler</span>
-                  <span className="font-semibold">{bowler?.name || '—'}</span>
-                  <span className="font-medium opacity-90">
-                    {bowler ? `${bowler.overs || 0}-${bowler.maidens || 0}-${bowler.runs || 0}-${bowler.wickets || 0}` : ''}
+
+                {/* Bowler */}
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 text-xs">Bowler</span>
+                  <span className="text-white font-semibold">
+                    {bowler?.name || '—'}
                   </span>
+                  {bowler && (
+                    <span className="text-gray-400 text-xs">
+                      {bowler.overs || 0}-{bowler.maidens || 0}-{bowler.runs || 0}-{bowler.wickets || 0}
+                    </span>
+                  )}
                 </div>
               </div>
-
-              <div className="flex flex-wrap gap-3 justify-between items-center text-sm">
-                {secondaryInnings[0] && (
-                  <span className="font-semibold">
-                    {`${secondaryInnings[0].batteamshortname} ${secondaryInnings[0].runs}/${secondaryInnings[0].wickets} (${secondaryInnings[0].overs} ov)`}
-                  </span>
-                )}
-                <div className="flex flex-wrap gap-3 text-sm opacity-90">
-                  {miniscore?.crr && <span>CRR {miniscore.crr}</span>}
-                  {miniscore?.partnership && <span>P&apos;ship {miniscore.partnership}</span>}
-                  {lastWicket && <span className="font-medium">{lastWicket}</span>}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {updateSummaryText && (
-            <div className="mb-3 px-3 py-2 bg-indigo-900/30 text-indigo-300 rounded-lg font-semibold text-sm">
-              {updateSummaryText}
             </div>
           )}
 
           {commentaryError && (
-            <div className="bg-red-900/20 border-2 border-red-500/50 rounded-lg p-4 mb-4 text-red-400">
+            <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-3 mb-4 text-red-400 text-sm">
               <p>⚠️ {commentaryError}</p>
             </div>
           )}
 
-          <div className="min-h-96 max-h-[600px] overflow-y-auto p-4 bg-gray-800/50 rounded-lg">
+          <div className="min-h-96 max-h-[500px] overflow-y-auto space-y-3">
             {limitedBallEntries.length > 0 ? (
-              <div className="flex flex-col gap-4">
-                {limitedBallEntries.map((entry, index) => {
-                  const overNumber = entry.over != null ? Number(entry.over) : NaN;
-                  const overLabel = Number.isFinite(overNumber)
-                    ? overNumber.toFixed(1)
-                    : entry.ball
-                      ? entry.ball.toString()
-                      : '';
+              limitedBallEntries.map((entry, index) => {
+                const eventBadge = getEventBadge(entry);
+                const isLiveBall = index === 0;
+                
+                // Format over number
+                const overNumber = entry.over != null ? Number(entry.over) : NaN;
+                const overLabel = Number.isFinite(overNumber) ? overNumber.toFixed(1) : '';
 
-                  const eventBadge = getEventBadge(entry);
-                  const isLiveBall = index === 0;
-                  const borderColor = entry.isNew ? 'border-l-emerald-500' : entry.updated ? 'border-l-amber-500' : isLiveBall ? 'border-l-red-500' : 'border-l-transparent';
-
-                  return (
-                    <div
-                      key={entry.key || entry.timestamp || index}
-                      className={`flex gap-4 border-l-4 ${borderColor} pl-2 transition-all duration-300 ${isLiveBall ? 'bg-gradient-to-r from-red-500/5 to-transparent' : entry.updated ? 'bg-gradient-to-r from-amber-500/8 to-transparent' : ''}`}
-                    >
-                      <div className="flex-shrink-0 flex flex-col gap-1">
-                        {overLabel && (
-                          <div className="flex flex-col gap-1">
-                            <span className="inline-block bg-gradient-to-r from-purple-500 to-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">
-                              {overLabel}
-                            </span>
-                            {isLiveBall && (
-                              <span className="inline-block bg-gradient-to-r from-red-500 to-red-600 text-white px-2 py-1 rounded text-xs font-bold text-center animate-pulse">
-                                🔴 LIVE
-                              </span>
-                            )}
-                            {entry.isNew && (
-                              <span className="inline-block bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wide text-center">
-                                New
-                              </span>
-                            )}
-                            {entry.updated && (
-                              <span className="inline-block bg-amber-100 text-amber-800 px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wide text-center">
-                                Updated
-                              </span>
-                            )}
-                            {eventBadge && (
-                              <span className={`inline-block ${eventBadge.className} text-white px-2 py-1 rounded-lg text-xs font-bold text-center shadow-md`}>
-                                {eventBadge.emoji} {eventBadge.label}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 bg-gray-900 p-4 rounded-lg shadow-md">
-                        <p className="text-gray-200 leading-relaxed">{entry.text}</p>
-                      </div>
+                return (
+                  <div
+                    key={entry.key || entry.timestamp || index}
+                    className={`p-3 bg-[#0f1f3a] border border-gray-700 rounded-lg text-sm text-gray-300 leading-relaxed ${isLiveBall ? 'border-emerald-500/50' : ''}`}
+                  >
+                    <div className="flex items-start gap-2 mb-2">
+                      {overLabel && (
+                        <span className="inline-block bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap">
+                          {overLabel}
+                        </span>
+                      )}
+                      {eventBadge && (
+                        <span className={`inline-block ${eventBadge.className} text-white px-2 py-0.5 rounded text-xs font-bold`}>
+                          {eventBadge.emoji} {eventBadge.label}
+                        </span>
+                      )}
+                      {isLiveBall && (
+                        <span className="inline-block bg-red-500/20 border border-red-500/30 text-red-400 px-2 py-0.5 rounded text-xs font-bold animate-pulse">
+                          LIVE
+                        </span>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
+                    <p>{entry.text}</p>
+                  </div>
+                );
+              })
             ) : isCommentaryFetching ? (
               <div className="text-center py-12">
-                <div className="inline-block w-12 h-12 border-4 border-gray-600 border-t-purple-500 rounded-full animate-spin mb-4"></div>
-                <p className="text-gray-400">Fetching live commentary...</p>
+                <div className="inline-block w-10 h-10 border-4 border-gray-700 border-t-emerald-500 rounded-full animate-spin mb-3"></div>
+                <p className="text-gray-400 text-sm">Fetching live commentary...</p>
               </div>
             ) : (
               <div className="text-center py-12 text-gray-400">
-                <p className="text-lg mb-2">🏏 Click &quot;Start Live Commentary&quot; to view ball-by-ball updates</p>
-                <p className="text-sm opacity-75">
-                  Commentary will auto-update with each new ball bowled in the match.
+                <p className="text-sm mb-2">Select a match and click &quot;Start Commentary&quot;</p>
+                <p className="text-xs opacity-75">
+                  Commentary will auto-update with each new ball bowled.
                 </p>
               </div>
             )}
