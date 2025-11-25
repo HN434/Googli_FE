@@ -5,7 +5,7 @@ import cricketApi from '@/services/cricketApi';
 import pollyService from '@/services/pollyService';
 
 // Backend WebSocket URL from environment variable
-const BACKEND_WS_URL = process.env.NEXT_PUBLIC_BACKEND_WS_URL || 'https://z34lswxm-8001.inc1.devtunnels.ms/api/commentary/ws/match/';
+const BACKEND_WS_URL = process.env.NEXT_PUBLIC_BACKEND_WS_URL || 'http://localhost:8000/api/commentary/ws/match/';
 
 interface Match {
   id: string;
@@ -55,6 +55,12 @@ export default function CommentaryTab() {
   // WebSocket Reference
   const wsRef = useRef<WebSocket | null>(null);
 
+  // Data Queues
+  const incomingQueue = useRef<CommentaryEntry[]>([]);
+  const processedKeys = useRef<Set<string>>(new Set());
+  const isFirstLoad = useRef<boolean>(true);
+  const lastFiveBalls = useRef<CommentaryEntry[]>([]);
+
   useEffect(() => {
     setAudioService(pollyService.getAudioServiceName());
   }, [isVoiceEnabled]);
@@ -79,6 +85,34 @@ export default function CommentaryTab() {
     };
   }, []);
 
+  // Process Commentary Queue
+  useEffect(() => {
+    const processQueue = () => {
+      if (incomingQueue.current.length > 0) {
+        const nextEntry = incomingQueue.current.shift();
+        if (nextEntry) {
+          setCommentaryEntries(prev => {
+            // Add new entry to the top (descending order for display)
+            const updated = [nextEntry, ...prev];
+
+            // Update lastFiveBalls reference
+            lastFiveBalls.current = updated.slice(0, 5);
+
+            return updated.slice(0, 50); // Keep last 50
+          });
+
+          // Voice Commentary for the single entry being displayed
+          if (isVoiceEnabled) {
+            pollyService.speakCommentary(nextEntry.text, commentaryLanguage, commentaryVoice);
+          }
+        }
+      }
+    };
+
+    const intervalId = setInterval(processQueue, 3000); // 3 second delay between balls
+    return () => clearInterval(intervalId);
+  }, [isVoiceEnabled, commentaryLanguage, commentaryVoice]);
+
   const loadMatches = async () => {
     setMatchesLoading(true);
     setMatchesError(null);
@@ -96,6 +130,13 @@ export default function CommentaryTab() {
     if (wsRef.current) {
       wsRef.current.close();
     }
+
+    // Reset queues on new connection
+    incomingQueue.current = [];
+    processedKeys.current.clear();
+    lastFiveBalls.current = [];
+    isFirstLoad.current = true;
+    setCommentaryEntries([]);
 
     try {
       const ws = new WebSocket(`${BACKEND_WS_URL}${matchId}`);
@@ -131,24 +172,74 @@ export default function CommentaryTab() {
             }));
 
             if (incomingEntries.length > 0) {
-              setNewEntries(incomingEntries);
-              setCommentaryEntries(prev => {
-                // Prepend new entries and keep unique by key
-                const combined = [...incomingEntries, ...prev];
-                const unique = Array.from(new Map(combined.map(item => [item.key, item])).values());
-                // Sort by timestamp descending (newest first)
-                return unique.sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
-              });
+              // Sort by timestamp DESCENDING (Newest first for display)
+              incomingEntries.sort((a, b) => b.timestamp - a.timestamp);
 
-              // Voice Commentary
-              if (isVoiceEnabled) {
-                incomingEntries.forEach((entry) => {
-                  pollyService.speakCommentary(entry.text, commentaryLanguage, commentaryVoice);
+              if (isFirstLoad.current) {
+                // First load: Display all 20 balls immediately without delay
+                const ballsToDisplay = incomingEntries.slice(0, 20);
+
+                // Mark all as processed
+                ballsToDisplay.forEach(entry => {
+                  processedKeys.current.add(entry.key);
+                });
+
+                // Set all balls immediately without queuing (no delay)
+                setCommentaryEntries(ballsToDisplay);
+
+                // Update lastFiveBalls reference
+                lastFiveBalls.current = ballsToDisplay.slice(0, 5);
+
+                isFirstLoad.current = false;
+              } else {
+                // Subsequent loads: Update last 5 balls with more descriptive text
+                const timestampMap = new Map<number, CommentaryEntry>();
+                incomingEntries.forEach(entry => {
+                  timestampMap.set(entry.timestamp, entry);
+                });
+
+                // Update existing entries if they match by timestamp
+                const updatedLastFive: CommentaryEntry[] = [];
+                lastFiveBalls.current.forEach(existingEntry => {
+                  const updatedEntry = timestampMap.get(existingEntry.timestamp);
+                  if (updatedEntry && updatedEntry.text.length > existingEntry.text.length) {
+                    // Found a more descriptive version
+                    updatedLastFive.push(updatedEntry);
+                    timestampMap.delete(existingEntry.timestamp);
+                  } else {
+                    updatedLastFive.push(existingEntry);
+                  }
+                });
+
+                // Update the commentary entries with the enhanced descriptions
+                if (updatedLastFive.length > 0) {
+                  setCommentaryEntries(prev => {
+                    const updated = [...prev];
+                    updatedLastFive.forEach((enhancedEntry, idx) => {
+                      if (idx < updated.length) {
+                        const existingIdx = updated.findIndex(e => e.timestamp === enhancedEntry.timestamp);
+                        if (existingIdx !== -1) {
+                          updated[existingIdx] = { ...enhancedEntry, updated: true };
+                        }
+                      }
+                    });
+                    return updated;
+                  });
+                }
+
+                // Add only new balls (not in processedKeys) to queue for delayed display
+                // Sort by timestamp ascending for proper order in queue
+                const newBalls = incomingEntries.filter(entry => !processedKeys.current.has(entry.key));
+                newBalls.sort((a, b) => a.timestamp - b.timestamp);
+
+                newBalls.forEach(entry => {
+                  processedKeys.current.add(entry.key);
+                  incomingQueue.current.push(entry);
                 });
               }
             }
 
-            // Update Match Status / Miniscore
+            // Update Match Status / Miniscore immediately
             if (data.miniscore) {
               setMiniscore(data.miniscore);
             } else if (data.match_status_info || data.score) {
@@ -278,7 +369,7 @@ export default function CommentaryTab() {
       {/* Main Content Grid */}
       <div className="grid lg:grid-cols-2 gap-6 max-w-6xl mx-auto">
         {/* Left Panel - Controls */}
-        <div className="bg-[#1a2942] rounded-xl p-6 border border-gray-700">
+        <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
           <h3 className="text-lg font-semibold text-white mb-4">Select Live Match</h3>
 
           {matchesLoading && (
@@ -296,7 +387,7 @@ export default function CommentaryTab() {
               <select
                 value={selectedMatchId || ''}
                 onChange={(e) => setSelectedMatchId(e.target.value)}
-                className="w-full px-4 py-3 bg-[#0f1f3a] border border-gray-700 rounded-lg text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-emerald-500 transition-colors"
               >
                 <option value="">-- Select a Match --</option>
                 {matches.map((match) => {
@@ -328,7 +419,7 @@ export default function CommentaryTab() {
               <select
                 value={commentaryLanguage}
                 onChange={(e) => setCommentaryLanguage(e.target.value)}
-                className="w-full px-3 py-2 bg-[#0f1f3a] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
               >
                 <option value="English">English</option>
                 <option value="Hindi">Hindi</option>
@@ -341,7 +432,7 @@ export default function CommentaryTab() {
               <select
                 value={commentaryTone}
                 onChange={(e) => setCommentaryTone(e.target.value)}
-                className="w-full px-3 py-2 bg-[#0f1f3a] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
               >
                 <option value="Calm">Calm</option>
                 <option value="Exciting">Excited</option>
@@ -354,7 +445,7 @@ export default function CommentaryTab() {
               <select
                 value={commentaryVoice}
                 onChange={(e) => setCommentaryVoice(e.target.value)}
-                className="w-full px-3 py-2 bg-[#0f1f3a] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
               >
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
@@ -419,7 +510,7 @@ export default function CommentaryTab() {
         </div>
 
         {/* Right Panel - Commentary Log */}
-        <div className="bg-[#1a2942] rounded-xl p-6 border border-gray-700">
+        <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-white">Commentary Log</h3>
             {isCommentaryFetching && (
@@ -431,7 +522,7 @@ export default function CommentaryTab() {
           </div>
 
           {miniscore && (
-            <div className="bg-[#0f1f3a] border border-gray-700 rounded-lg p-4 mb-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 mb-4">
               <div className="flex justify-between items-center gap-4 flex-wrap mb-3">
                 <div className="flex items-baseline gap-3">
                   <span className="text-xs uppercase tracking-wide text-gray-400">
@@ -507,7 +598,7 @@ export default function CommentaryTab() {
               limitedBallEntries.map((entry, index) => {
                 const eventBadge = getEventBadge(entry);
                 const isLiveBall = index === 0;
-                
+
                 // Format over number
                 const overNumber = entry.over != null ? Number(entry.over) : NaN;
                 const overLabel = Number.isFinite(overNumber) ? overNumber.toFixed(1) : '';
@@ -515,7 +606,7 @@ export default function CommentaryTab() {
                 return (
                   <div
                     key={entry.key || entry.timestamp || index}
-                    className={`p-3 bg-[#0f1f3a] border border-gray-700 rounded-lg text-sm text-gray-300 leading-relaxed ${isLiveBall ? 'border-emerald-500/50' : ''}`}
+                    className={`p-3 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300 leading-relaxed ${isLiveBall ? 'border-emerald-500/50' : ''}`}
                   >
                     <div className="flex items-start gap-2 mb-2">
                       {overLabel && (

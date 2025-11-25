@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 
 export default function FeaturesPage() {
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-gray-900">
       <FeaturesHero />
       <FeaturesTabs />
     </main>

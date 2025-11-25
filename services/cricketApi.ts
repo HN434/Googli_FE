@@ -4,7 +4,7 @@
  * Using Cricbuzz RapidAPI
  */
 
-const RAPIDAPI_HOST = 'cricbuzz-cricket.p.rapidapi.com';
+const RAPIDAPI_HOST = 'http://localhost:8000/api/';
 const CACHE_DURATION = 10000; // 10 seconds cache for live data
 const COMMENTARY_WINDOW_SIZE = 20;
 const COMMENTARY_UPDATE_WINDOW = 3;
@@ -95,7 +95,7 @@ class CricketApiService {
             throw new Error('API key not configured');
         }
 
-        const url = new URL(`https://${RAPIDAPI_HOST}${endpoint}`);
+        const url = new URL(`${RAPIDAPI_HOST}${endpoint}`);
         Object.keys(params).forEach(key => {
             url.searchParams.append(key, params[key]);
         });
@@ -126,7 +126,7 @@ class CricketApiService {
         }
 
         try {
-            const data = await this.makeRequest('/matches/v1/live');
+            const data = await this.makeRequest('live-matches');
             const matches: Match[] = [];
 
             if (data.typeMatches) {

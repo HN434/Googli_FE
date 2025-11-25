@@ -19,7 +19,7 @@ export default function FeaturesTabs() {
   ];
 
   return (
-    <section className="py-8 px-6 bg-[#0a1628] min-h-screen">
+    <section className="py-8 px-6 bg-gray-900 min-h-screen">
       <div className="container mx-auto max-w-5xl">
         {/* Tabs Navigation */}
         <div className="flex justify-center gap-3 mb-12">
@@ -32,7 +32,7 @@ export default function FeaturesTabs() {
                 className={`flex flex-col items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all min-w-[120px] ${
                   activeTab === tab.id
                     ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500"
-                    : "bg-[#0f1f3a] text-gray-400 hover:text-white border border-gray-800 hover:border-gray-700"
+                    : "bg-gray-800/50 text-gray-400 hover:text-white border border-gray-700 hover:border-gray-600"
                 }`}
               >
                 <Icon className="w-5 h-5" />
