@@ -4,6 +4,112 @@ import { useState, useEffect, useRef } from 'react';
 import cricketApi from '@/services/cricketApi';
 import pollyService from '@/services/pollyService';
 
+// Custom Select Component with Tooltip
+interface CustomSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string; title: string }[];
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+function CustomSelect({ value, onChange, options, placeholder = 'Select...', disabled = false }: CustomSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hoveredOption, setHoveredOption] = useState<string | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const handleOptionHover = (optionValue: string, event: React.MouseEvent<HTMLButtonElement>) => {
+    setHoveredOption(optionValue);
+    const rect = event.currentTarget.getBoundingClientRect();
+    setTooltipPosition({
+      top: rect.top,
+      left: rect.right + 8
+    });
+  };
+
+  const selectedOption = options.find(opt => opt.value === value);
+  const displayText = selectedOption ? selectedOption.label : placeholder;
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      {/* Select Button */}
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-emerald-500 hover:border-emerald-400 transition-all cursor-pointer text-left flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+        title={selectedOption?.title || placeholder}
+      >
+        <span className="truncate pr-2 block">{displayText}</span>
+        <svg
+          className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <>
+          <div className="absolute z-50 w-full mt-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-h-80 overflow-y-auto overflow-x-hidden">
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                onMouseEnter={(e) => handleOptionHover(option.value, e)}
+                onMouseLeave={() => setHoveredOption(null)}
+                className={`w-full px-4 py-3 text-left text-sm transition-colors overflow-hidden ${value === option.value
+                  ? 'bg-emerald-500/20 text-emerald-400 font-semibold'
+                  : 'text-gray-300 hover:bg-gray-800'
+                  }`}
+              >
+                <span className="truncate block">{option.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Tooltip - rendered outside dropdown to avoid clipping */}
+          {hoveredOption && hoveredOption !== '' && (
+            <div
+              className="fixed z-[100] px-3 py-2 bg-gray-950 border border-emerald-500/50 rounded-lg shadow-2xl text-xs text-gray-200 pointer-events-none whitespace-normal break-words max-w-md"
+              style={{
+                left: `${tooltipPosition.left}px`,
+                top: `${tooltipPosition.top}px`,
+              }}
+            >
+              {options.find(opt => opt.value === hoveredOption)?.title}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // Backend WebSocket URL from environment variable
 const BACKEND_WS_URL = process.env.NEXT_PUBLIC_BACKEND_WS_URL || 'http://localhost:8000/api/commentary/ws/match/';
 
@@ -397,22 +503,56 @@ export default function CommentaryTab() {
   const statusText = matchHeader?.status || miniscore?.custstatus || matchHeader?.state || '';
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 py-8">
+    <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
       {/* Header */}
-      <div className="mb-8 text-center">
-        <h1 className="text-3xl md:text-4xl font-bold mb-3 text-emerald-400">
+      <div className="mb-6 sm:mb-8 text-center">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 sm:mb-3 text-emerald-400">
           Live Ball-by-Ball Commentary
         </h1>
-        <p className="text-gray-400 max-w-2xl mx-auto">
+        <p className="text-sm sm:text-base text-gray-400 max-w-2xl mx-auto px-2">
           Choose a live match scenario and our AI will generate a live commentary stream for you.
         </p>
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid lg:grid-cols-2 gap-6 max-w-6xl mx-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-[40%_60%] gap-4 sm:gap-6 max-w-7xl mx-auto">
         {/* Left Panel - Controls */}
-        <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-          <h3 className="text-lg font-semibold text-white mb-4">Select Live Match</h3>
+        <div className="bg-gray-800/50 rounded-lg sm:rounded-xl p-4 sm:p-6 border border-gray-700">
+          {/* Header with Title and Checkboxes */}
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2 sm:gap-3">
+            <h3 className="text-base sm:text-lg font-semibold text-white">Select Live Match</h3>
+
+            <div className="flex items-center gap-3 sm:gap-4">
+              <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={isVoiceEnabled}
+                    onChange={(e) => setIsVoiceEnabled(e.target.checked)}
+                    disabled={isCommentaryFetching}
+                    className="w-4 h-4 cursor-pointer accent-emerald-500 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <span className="text-xs sm:text-sm text-gray-300 group-hover:text-emerald-400 transition-colors whitespace-nowrap">
+                  🎙️ Voice Commentary
+                </span>
+              </label>
+
+              {/* <label className="flex items-center gap-2 cursor-pointer group">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={isAutoRefreshEnabled}
+                    onChange={(e) => setIsAutoRefreshEnabled(e.target.checked)}
+                    className="w-4 h-4 cursor-pointer accent-emerald-500 rounded"
+                  />
+                </div>
+                <span className="text-sm text-gray-300 group-hover:text-emerald-400 transition-colors">
+                  🔄 Auto
+                </span>
+              </label> */}
+            </div>
+          </div>
 
           {matchesLoading && (
             <p className="text-gray-400 italic text-sm">Loading matches...</p>
@@ -426,26 +566,36 @@ export default function CommentaryTab() {
 
           {!matchesLoading && !matchesError && matches && matches.length > 0 && (
             <div className="mb-6">
-              <select
+              <CustomSelect
                 value={selectedMatchId || ''}
-                onChange={(e) => setSelectedMatchId(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-emerald-500 transition-colors"
-              >
-                <option value="">-- Select a Match --</option>
-                {matches.map((match) => {
-                  const liveIndicator = match.isLive ? '🔴 ' : '';
-                  const teams = match.displayName || `${match.team1} vs ${match.team2}`;
-                  const status = match.status ? ` - ${match.status}` : '';
-                  const series = match.seriesName ? ` (${match.seriesName})` : '';
-                  const displayText = `${liveIndicator}${teams}${status}${series}`;
+                onChange={(value) => setSelectedMatchId(value)}
+                disabled={isCommentaryFetching}
+                options={[
+                  { value: '', label: '-- Select a Match --', title: 'Select a match' },
+                  // Sort matches: live matches first, then non-live
+                  ...matches
+                    .sort((a, b) => {
+                      // Live matches come first
+                      if (a.isLive && !b.isLive) return -1;
+                      if (!a.isLive && b.isLive) return 1;
+                      return 0;
+                    })
+                    .map((match) => {
+                      const liveIndicator = match.isLive ? '🔴 ' : '';
+                      const teams = match.displayName || `${match.team1} vs ${match.team2}`;
+                      const status = match.status ? ` - ${match.status}` : '';
+                      const series = match.seriesName ? ` (${match.seriesName})` : '';
+                      const displayText = `${liveIndicator}${teams}${status}${series}`;
 
-                  return (
-                    <option key={match.id} value={match.id}>
-                      {displayText}
-                    </option>
-                  );
-                })}
-              </select>
+                      return {
+                        value: match.id,
+                        label: displayText,
+                        title: displayText
+                      };
+                    })
+                ]}
+                placeholder="-- Select a Match --"
+              />
             </div>
           )}
 
@@ -456,50 +606,68 @@ export default function CommentaryTab() {
           )}
 
           {/* Commentary Settings */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+            <div className="relative group">
               <select
                 value={commentaryLanguage}
                 onChange={(e) => setCommentaryLanguage(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
+                disabled={isCommentaryFetching}
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500 hover:border-emerald-400 transition-all cursor-pointer appearance-none pr-8 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="English">English</option>
                 <option value="Hindi">Hindi</option>
                 <option value="Tamil">Tamil</option>
                 <option value="Telugu">Telugu</option>
               </select>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg className="w-4 h-4 text-gray-400 group-hover:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
 
-            <div>
+            <div className="relative group">
               <select
                 value={commentaryTone}
                 onChange={(e) => setCommentaryTone(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
+                disabled={isCommentaryFetching}
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500 hover:border-emerald-400 transition-all cursor-pointer appearance-none pr-8 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="Calm">Calm</option>
                 <option value="Exciting">Excited</option>
                 <option value="Professional">Professional</option>
                 <option value="Dramatic">Dramatic</option>
               </select>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg className="w-4 h-4 text-gray-400 group-hover:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
 
-            <div>
+            <div className="relative group">
               <select
                 value={commentaryVoice}
                 onChange={(e) => setCommentaryVoice(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
+                disabled={isCommentaryFetching}
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500 hover:border-emerald-400 transition-all cursor-pointer appearance-none pr-8 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
               </select>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg className="w-4 h-4 text-gray-400 group-hover:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
           </div>
 
           {/* Start Button */}
-          <div className="mb-6">
+          <div className="mb-4 sm:mb-6">
             {!isCommentaryFetching ? (
               <button
-                className="w-full px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-sm sm:text-base font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleStartCommentary}
                 disabled={!selectedMatchId}
               >
@@ -507,7 +675,7 @@ export default function CommentaryTab() {
               </button>
             ) : (
               <button
-                className="w-full px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-all"
+                className="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-red-500 hover:bg-red-600 text-white text-sm sm:text-base font-semibold rounded-lg transition-all"
                 onClick={handleStopCommentary}
               >
                 Stop Commentary
@@ -515,46 +683,28 @@ export default function CommentaryTab() {
             )}
           </div>
 
-          {/* Additional Options */}
-          <div className="space-y-3 text-sm">
-            <label className="flex items-center gap-2 cursor-pointer text-gray-300">
-              <input
-                type="checkbox"
-                checked={isVoiceEnabled}
-                onChange={(e) => setIsVoiceEnabled(e.target.checked)}
-                className="w-4 h-4 cursor-pointer accent-emerald-500"
-              />
-              Voice Commentary
-            </label>
-            {isVoiceEnabled && (
-              <div className="ml-6 flex items-center gap-2 text-xs text-gray-400">
+          {/* Voice Test Button (shown when voice is enabled) */}
+          {isVoiceEnabled && (
+            <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span className="text-emerald-400">🔊</span>
                 <span>Audio: {audioService}</span>
-                <button
-                  className="px-2 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded text-emerald-400 hover:bg-emerald-500/30 transition-all"
-                  onClick={() => pollyService.speakCommentary('This is a test of the voice commentary system. Welcome to Googli AI!', commentaryLanguage, commentaryVoice)}
-                  title="Test voice output"
-                >
-                  Test
-                </button>
               </div>
-            )}
-
-            <label className="flex items-center gap-2 cursor-pointer text-gray-300">
-              <input
-                type="checkbox"
-                checked={isAutoRefreshEnabled}
-                onChange={(e) => setIsAutoRefreshEnabled(e.target.checked)}
-                className="w-4 h-4 cursor-pointer accent-emerald-500"
-              />
-              Auto-Refresh (Live)
-            </label>
-          </div>
+              <button
+                className="px-3 py-1.5 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 hover:bg-emerald-500/30 transition-all text-xs font-semibold"
+                onClick={() => pollyService.speakCommentary('This is a test of the voice commentary system. Welcome to Googli AI!', commentaryLanguage, commentaryVoice)}
+                title="Test voice output"
+              >
+                Test Voice
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right Panel - Commentary Log */}
-        <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-white">Commentary Log</h3>
+        <div className="bg-gray-800/50 rounded-lg sm:rounded-xl p-4 sm:p-6 border border-gray-700">
+          <div className="flex justify-between items-center mb-3 sm:mb-4">
+            <h3 className="text-base sm:text-lg font-semibold text-white">Commentary Log</h3>
             {isCommentaryFetching && (
               <span className="flex items-center gap-2 px-3 py-1 bg-red-500/20 border border-red-500/30 text-red-400 rounded-full text-xs font-semibold">
                 <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
@@ -564,14 +714,14 @@ export default function CommentaryTab() {
           </div>
 
           {miniscore && (
-            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 mb-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 sm:p-4 mb-3 sm:mb-4">
               <div className="flex justify-between items-center gap-4 flex-wrap mb-3">
                 <div className="flex items-baseline gap-3">
                   <span className="text-xs uppercase tracking-wide text-gray-400">
                     {primaryInnings?.batteamshortname || matchHeader?.teamdetails?.batteamname || '—'}
                   </span>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-white">
+                    <span className="text-xl sm:text-2xl font-bold text-white">
                       {primaryInnings ? `${primaryInnings.runs || 0}/${primaryInnings.wickets || 0}` : '--/--'}
                     </span>
                     {primaryInnings && (
@@ -586,7 +736,7 @@ export default function CommentaryTab() {
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-4 text-sm">
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs sm:text-sm">
                 {/* Striker */}
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500 text-xs">Striker</span>
@@ -635,7 +785,7 @@ export default function CommentaryTab() {
             </div>
           )} */}
 
-          <div className="min-h-96 max-h-[500px] overflow-y-auto space-y-3">
+          <div className="min-h-[300px] sm:min-h-96 max-h-[400px] sm:max-h-[500px] overflow-y-auto space-y-2 sm:space-y-3">
             {displayEntries.length > 0 ? (
               <>
                 {displayEntries.map((entry, index) => {
@@ -653,12 +803,12 @@ export default function CommentaryTab() {
                   return (
                     <div
                       key={entry.key || entry.timestamp || index}
-                      className={`p-3 rounded-lg text-sm leading-relaxed ${isInfoEntry
+                      className={`p-2.5 sm:p-3 rounded-md sm:rounded-lg text-xs sm:text-sm leading-relaxed ${isInfoEntry
                         ? 'bg-gray-800/30 border border-gray-700/50 text-gray-400 italic'
                         : `bg-gray-900 border border-gray-700 text-gray-300 ${isLiveBall ? 'border-emerald-500/50' : ''}`
                         }`}
                     >
-                      <div className="flex items-start gap-2 mb-2">
+                      <div className="flex items-start gap-1.5 sm:gap-2 mb-1.5 sm:mb-2 flex-wrap">
                         {overLabel && (
                           <span className="inline-block bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap">
                             {overLabel}
