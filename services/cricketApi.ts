@@ -234,6 +234,48 @@ class CricketApiService {
     }
 
     /**
+     * Fetch previous commentary balls for pagination
+     * @param matchId - The match ID
+     * @param inningsId - The innings ID
+     * @param timestamp - The timestamp of the last ball (to fetch balls before this)
+     */
+    async fetchPreviousCommentary(matchId: string, inningsId: number, timestamp: number): Promise<CommentaryEntry[]> {
+        if (!matchId) {
+            throw new Error('Match ID is required');
+        }
+
+        try {
+            const data = await this.makeRequest(`commentary/matches/${matchId}/comm-previous`, {
+                iid: inningsId,
+                tms: timestamp
+            });
+
+            // Map the response to CommentaryEntry format matching WebSocket structure
+            const entries: CommentaryEntry[] = (data.lines || []).map((line: any, index: number) => ({
+                key: line.id,
+                text: line.text,
+                originalText: line.text,
+                over: line.over_number,
+                ball: line.ball_number,
+                event: line.event_type,
+                runs: line.runs || 0,
+                wicket: line.event_type === 'wicket' || (line.wickets && line.wickets > 0),
+                isNew: false,
+                updated: false,
+                timestamp: new Date(line.timestamp).getTime(),
+                ballIndex: index,
+                raw: line,
+                inningsId: line.metadata?.raw_data?.inningsid || line.metadata?.inningsid,
+            }));
+
+            return entries;
+        } catch (error: any) {
+            console.error('Error fetching previous commentary:', error);
+            throw new Error(`Failed to fetch previous commentary: ${error.message}`);
+        }
+    }
+
+    /**
      * Clean commentary text - remove all placeholder patterns
      */
     cleanCommentaryText(text: string, eventType?: string): string {

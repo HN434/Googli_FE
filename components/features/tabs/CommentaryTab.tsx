@@ -28,6 +28,7 @@ interface CommentaryEntry {
   isNew: boolean;
   updated: boolean;
   timestamp: number;
+  inningsId?: number;
 }
 
 export default function CommentaryTab() {
@@ -51,6 +52,10 @@ export default function CommentaryTab() {
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isAutoRefreshEnabled, setIsAutoRefreshEnabled] = useState(true);
   const [audioService, setAudioService] = useState('Browser Speech Synthesis');
+
+  // Load More State
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreBalls, setHasMoreBalls] = useState(true);
 
   // WebSocket Reference
   const wsRef = useRef<WebSocket | null>(null);
@@ -137,6 +142,7 @@ export default function CommentaryTab() {
     lastFiveBalls.current = [];
     isFirstLoad.current = true;
     setCommentaryEntries([]);
+    setHasMoreBalls(true);
 
     try {
       const ws = new WebSocket(`${BACKEND_WS_URL}${matchId}`);
@@ -169,6 +175,7 @@ export default function CommentaryTab() {
               isNew: true,
               updated: false,
               timestamp: new Date(line.timestamp).getTime(),
+              inningsId: line.metadata?.raw_data?.inningsid || line.metadata?.inningsid,
             }));
 
             if (incomingEntries.length > 0) {
@@ -322,6 +329,46 @@ export default function CommentaryTab() {
     pollyService.stop();
   };
 
+  const handleLoadMore = async () => {
+    if (!selectedMatchId || isLoadingMore || !hasMoreBalls) return;
+
+    // Get the last ball's timestamp and innings ID
+    const lastBall = commentaryEntries[commentaryEntries.length - 1];
+    if (!lastBall) return;
+
+    // Get innings ID from the last ball, fallback to miniscore if not available
+    const inningsId = lastBall.inningsId || (miniscore?.inningsid ? parseInt(miniscore.inningsid) : 1);
+    const timestamp = lastBall.timestamp;
+
+    setIsLoadingMore(true);
+    try {
+      const previousBalls = await cricketApi.fetchPreviousCommentary(
+        selectedMatchId,
+        inningsId,
+        timestamp
+      );
+
+      if (previousBalls.length > 0) {
+        // Append the previous balls to the existing entries and sort by timestamp (descending - newest first)
+        setCommentaryEntries(prev => {
+          const combined = [...prev, ...previousBalls];
+          // Sort by timestamp in descending order (newest first)
+          return combined.sort((a, b) => b.timestamp - a.timestamp);
+        });
+        // Mark all new balls as processed
+        previousBalls.forEach(ball => processedKeys.current.add(ball.key));
+      } else {
+        // No more balls available
+        setHasMoreBalls(false);
+      }
+    } catch (error: any) {
+      console.error('Error loading more commentary:', error);
+      setCommentaryError(`Failed to load more: ${error.message}`);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   const getEventBadge = (entry: CommentaryEntry) => {
     const eventType = (entry.event || '').toUpperCase();
     if (entry.wicket || eventType === 'WICKET') {
@@ -339,13 +386,8 @@ export default function CommentaryTab() {
     return null;
   };
 
-  const ballEntries = commentaryEntries.filter(entry => {
-    if (entry.ball && entry.ball > 0) return true;
-    const overNumber = Number(entry.over);
-    return Number.isFinite(overNumber) && overNumber > 0;
-  });
-
-  const limitedBallEntries = ballEntries.slice(0, 20);
+  // Display all commentary entries (both ball commentary and informational text)
+  const displayEntries = commentaryEntries;
 
   const inningsScores = miniscore?.inningsscores?.inningsscore || [];
   const primaryInnings = inningsScores.find((inning: any) => inning.inningsid === miniscore?.inningsid) || inningsScores[0];
@@ -587,48 +629,86 @@ export default function CommentaryTab() {
             </div>
           )}
 
-          {commentaryError && (
+          {/* {commentaryError && (
             <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-3 mb-4 text-red-400 text-sm">
               <p>⚠️ {commentaryError}</p>
             </div>
-          )}
+          )} */}
 
           <div className="min-h-96 max-h-[500px] overflow-y-auto space-y-3">
-            {limitedBallEntries.length > 0 ? (
-              limitedBallEntries.map((entry, index) => {
-                const eventBadge = getEventBadge(entry);
-                const isLiveBall = index === 0;
+            {displayEntries.length > 0 ? (
+              <>
+                {displayEntries.map((entry, index) => {
+                  const eventBadge = getEventBadge(entry);
+                  const isLiveBall = index === 0;
+                  const hasBall = entry.ball && entry.ball > 0;
 
-                // Format over number
-                const overNumber = entry.over != null ? Number(entry.over) : NaN;
-                const overLabel = Number.isFinite(overNumber) ? overNumber.toFixed(1) : '';
+                  // Format over number
+                  const overNumber = entry.over != null ? Number(entry.over) : NaN;
+                  const overLabel = Number.isFinite(overNumber) && overNumber > 0 ? overNumber.toFixed(1) : '';
 
-                return (
-                  <div
-                    key={entry.key || entry.timestamp || index}
-                    className={`p-3 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300 leading-relaxed ${isLiveBall ? 'border-emerald-500/50' : ''}`}
-                  >
-                    <div className="flex items-start gap-2 mb-2">
-                      {overLabel && (
-                        <span className="inline-block bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap">
-                          {overLabel}
-                        </span>
-                      )}
-                      {eventBadge && (
-                        <span className={`inline-block ${eventBadge.className} text-white px-2 py-0.5 rounded text-xs font-bold`}>
-                          {eventBadge.emoji} {eventBadge.label}
-                        </span>
-                      )}
-                      {isLiveBall && (
-                        <span className="inline-block bg-red-500/20 border border-red-500/30 text-red-400 px-2 py-0.5 rounded text-xs font-bold animate-pulse">
-                          LIVE
-                        </span>
-                      )}
+                  // Check if this is an informational entry (no ball number)
+                  const isInfoEntry = !hasBall && !overLabel;
+
+                  return (
+                    <div
+                      key={entry.key || entry.timestamp || index}
+                      className={`p-3 rounded-lg text-sm leading-relaxed ${isInfoEntry
+                        ? 'bg-gray-800/30 border border-gray-700/50 text-gray-400 italic'
+                        : `bg-gray-900 border border-gray-700 text-gray-300 ${isLiveBall ? 'border-emerald-500/50' : ''}`
+                        }`}
+                    >
+                      <div className="flex items-start gap-2 mb-2">
+                        {overLabel && (
+                          <span className="inline-block bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap">
+                            {overLabel}
+                          </span>
+                        )}
+                        {eventBadge && (
+                          <span className={`inline-block ${eventBadge.className} text-white px-2 py-0.5 rounded text-xs font-bold`}>
+                            {eventBadge.emoji} {eventBadge.label}
+                          </span>
+                        )}
+                        {isLiveBall && !isInfoEntry && (
+                          <span className="inline-block bg-red-500/20 border border-red-500/30 text-red-400 px-2 py-0.5 rounded text-xs font-bold animate-pulse">
+                            LIVE
+                          </span>
+                        )}
+                      </div>
+                      <p>{entry.text}</p>
                     </div>
-                    <p>{entry.text}</p>
+                  );
+                })}
+
+                {/* Load More Button */}
+                {displayEntries.length >= 20 && hasMoreBalls && (
+                  <div className="pt-4 pb-2">
+                    <button
+                      onClick={handleLoadMore}
+                      disabled={isLoadingMore}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isLoadingMore ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Loading...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Load More Balls</span>
+                          <span className="text-xs opacity-75">↓</span>
+                        </>
+                      )}
+                    </button>
                   </div>
-                );
-              })
+                )}
+
+                {!hasMoreBalls && displayEntries.length >= 20 && (
+                  <div className="pt-4 pb-2 text-center">
+                    <p className="text-gray-500 text-sm">No more balls available</p>
+                  </div>
+                )}
+              </>
             ) : isCommentaryFetching ? (
               <div className="text-center py-12">
                 <div className="inline-block w-10 h-10 border-4 border-gray-700 border-t-emerald-500 rounded-full animate-spin mb-3"></div>

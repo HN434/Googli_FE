@@ -10,7 +10,7 @@ import MultiModelChat from "./tabs/MultiModelChat";
 type TabType = "video" | "commentary" | "3d-replay-video" | "multimodel-chat";
 
 export default function FeaturesTabs() {
-  const [activeTab, setActiveTab] = useState<TabType>("video");
+  const [activeTab, setActiveTab] = useState<TabType>("commentary");
 
   const tabs = [
     { id: "commentary" as TabType, label: "Commentary", icon: Mic },
