@@ -238,8 +238,9 @@ class CricketApiService {
      * @param matchId - The match ID
      * @param inningsId - The innings ID
      * @param timestamp - The timestamp of the last ball (to fetch balls before this)
+     * @param language - The language code for commentary (optional, defaults to 'en')
      */
-    async fetchPreviousCommentary(matchId: string, inningsId: number, timestamp: number): Promise<CommentaryEntry[]> {
+    async fetchPreviousCommentary(matchId: string, inningsId: number, timestamp: number, language: string = 'en'): Promise<CommentaryEntry[]> {
         if (!matchId) {
             throw new Error('Match ID is required');
         }
@@ -247,7 +248,8 @@ class CricketApiService {
         try {
             const data = await this.makeRequest(`commentary/matches/${matchId}/comm-previous`, {
                 iid: inningsId,
-                tms: timestamp
+                tms: timestamp,
+                language: language
             });
 
             // Map the response to CommentaryEntry format matching WebSocket structure
