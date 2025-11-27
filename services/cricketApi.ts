@@ -4,7 +4,7 @@
  * Using Cricbuzz RapidAPI
  */
 
-const RAPIDAPI_HOST = 'cricbuzz-cricket.p.rapidapi.com';
+const RAPIDAPI_HOST = 'http://localhost:8000/api/';
 const CACHE_DURATION = 10000; // 10 seconds cache for live data
 const COMMENTARY_WINDOW_SIZE = 20;
 const COMMENTARY_UPDATE_WINDOW = 3;
@@ -95,7 +95,7 @@ class CricketApiService {
             throw new Error('API key not configured');
         }
 
-        const url = new URL(`https://${RAPIDAPI_HOST}${endpoint}`);
+        const url = new URL(`${RAPIDAPI_HOST}${endpoint}`);
         Object.keys(params).forEach(key => {
             url.searchParams.append(key, params[key]);
         });
@@ -126,7 +126,7 @@ class CricketApiService {
         }
 
         try {
-            const data = await this.makeRequest('/matches/v1/live');
+            const data = await this.makeRequest('live-matches');
             const matches: Match[] = [];
 
             if (data.typeMatches) {
@@ -230,6 +230,48 @@ class CricketApiService {
         } catch (error: any) {
             console.error('Error fetching commentary:', error);
             throw new Error(`Failed to fetch commentary: ${error.message}`);
+        }
+    }
+
+    /**
+     * Fetch previous commentary balls for pagination
+     * @param matchId - The match ID
+     * @param inningsId - The innings ID
+     * @param timestamp - The timestamp of the last ball (to fetch balls before this)
+     */
+    async fetchPreviousCommentary(matchId: string, inningsId: number, timestamp: number): Promise<CommentaryEntry[]> {
+        if (!matchId) {
+            throw new Error('Match ID is required');
+        }
+
+        try {
+            const data = await this.makeRequest(`commentary/matches/${matchId}/comm-previous`, {
+                iid: inningsId,
+                tms: timestamp
+            });
+
+            // Map the response to CommentaryEntry format matching WebSocket structure
+            const entries: CommentaryEntry[] = (data.lines || []).map((line: any, index: number) => ({
+                key: line.id,
+                text: line.text,
+                originalText: line.text,
+                over: line.over_number,
+                ball: line.ball_number,
+                event: line.event_type,
+                runs: line.runs || 0,
+                wicket: line.event_type === 'wicket' || (line.wickets && line.wickets > 0),
+                isNew: false,
+                updated: false,
+                timestamp: new Date(line.timestamp).getTime(),
+                ballIndex: index,
+                raw: line,
+                inningsId: line.metadata?.raw_data?.inningsid || line.metadata?.inningsid,
+            }));
+
+            return entries;
+        } catch (error: any) {
+            console.error('Error fetching previous commentary:', error);
+            throw new Error(`Failed to fetch previous commentary: ${error.message}`);
         }
     }
 

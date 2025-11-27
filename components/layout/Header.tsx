@@ -9,11 +9,11 @@ export default function Header() {
           <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-lg" />
           <span className="text-xl font-bold text-white">Googli.ai</span>
         </Link>
-        
+
         <div className="hidden md:flex items-center gap-8">
-          <Link href="/about" className="text-gray-300 hover:text-white transition-colors">
+          {/* <Link href="/about" className="text-gray-300 hover:text-white transition-colors">
             About
-          </Link>
+          </Link> */}
           <Link href="/features" className="text-gray-300 hover:text-white transition-colors">
             Features
           </Link>

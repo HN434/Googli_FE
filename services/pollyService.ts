@@ -16,6 +16,16 @@ class PollyService {
     private initialized: boolean = false;
 
     /**
+     * Initialize AWS Polly (compatibility method)
+     * Note: This Next.js version uses browser speech, but we keep this method for API compatibility
+     */
+    async initialize(accessKeyId: string, secretAccessKey: string, region: string = 'us-east-1'): Promise<boolean> {
+        console.log('[Polly] AWS Polly not implemented in Next.js version, using browser speech synthesis');
+        // Simply initialize browser speech
+        return this.initializeBrowserSpeech();
+    }
+
+    /**
      * Initialize browser speech synthesis
      */
     initializeBrowserSpeech(): boolean {
