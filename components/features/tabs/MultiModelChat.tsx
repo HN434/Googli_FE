@@ -323,8 +323,8 @@ export default function MultiModelChat() {
                             key={session.id}
                             onClick={() => setCurrentSessionId(session.id)}
                             className={`p-3 rounded-lg cursor-pointer transition-all duration-200 group ${currentSessionId === session.id
-                                    ? 'bg-emerald-500/20 border border-emerald-500/50'
-                                    : 'bg-slate-800/50 hover:bg-slate-700/50 border border-transparent'
+                                ? 'bg-emerald-500/20 border border-emerald-500/50'
+                                : 'bg-slate-800/50 hover:bg-slate-700/50 border border-transparent'
                                 }`}
                         >
                             <div className="flex items-start justify-between gap-2">
@@ -365,9 +365,9 @@ export default function MultiModelChat() {
                             </button>
                             <div>
                                 <h3 className="text-lg font-semibold text-white">Cricket AI Assistant</h3>
-                                <p className="text-xs text-slate-400">
+                                {/* <p className="text-xs text-slate-400">
                                     {bedrockService.initialized ? '🟢 AWS Bedrock Connected' : '🟡 Basic Mode'}
-                                </p>
+                                </p> */}
                             </div>
                         </div>
 
@@ -421,10 +421,10 @@ export default function MultiModelChat() {
 
                             <div className={`flex-1 max-w-[80%] ${msg.type === 'user' ? 'items-end' : 'items-start'} flex flex-col`}>
                                 <div className={`px-4 py-3 rounded-2xl ${msg.type === 'user'
-                                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
-                                        : msg.type === 'error'
-                                            ? 'bg-red-500/20 border border-red-500/50 text-red-200'
-                                            : 'bg-slate-800/80 text-slate-100'
+                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
+                                    : msg.type === 'error'
+                                        ? 'bg-red-500/20 border border-red-500/50 text-red-200'
+                                        : 'bg-slate-800/80 text-slate-100'
                                     }`}>
                                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                                 </div>
@@ -512,8 +512,8 @@ export default function MultiModelChat() {
                             onClick={handleVoiceRecording}
                             disabled={isLoading || isRecording}
                             className={`p-3 rounded-lg transition-all ${isRecording
-                                    ? 'bg-red-500 animate-pulse'
-                                    : 'bg-slate-800 hover:bg-slate-700'
+                                ? 'bg-red-500 animate-pulse'
+                                : 'bg-slate-800 hover:bg-slate-700'
                                 } disabled:opacity-50`}
                             title={isRecording ? 'Recording...' : 'Voice input'}
                         >
