@@ -4,7 +4,7 @@
  * Using Cricbuzz RapidAPI
  */
 
-const RAPIDAPI_HOST = 'http://localhost:8000/api/';
+const RAPIDAPI_HOST = process.env.NEXT_PUBLIC_BE_URL!;
 const CACHE_DURATION = 10000; // 10 seconds cache for live data
 const COMMENTARY_WINDOW_SIZE = 20;
 const COMMENTARY_UPDATE_WINDOW = 3;
