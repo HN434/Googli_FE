@@ -220,7 +220,7 @@ export default function CommentaryTab() {
       }
     };
 
-    const intervalId = setInterval(processQueue, 3000); // 3 second delay between balls
+    const intervalId = setInterval(processQueue, 6000); // 6 second delay between balls
     return () => clearInterval(intervalId);
   }, [isVoiceEnabled, commentaryLanguage, commentaryVoice]);
 
