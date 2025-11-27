@@ -11,11 +11,12 @@ export default function Header() {
         </Link>
 
         <div className="hidden md:flex items-center gap-8">
-          {/* <Link href="/about" className="text-gray-300 hover:text-white transition-colors">
-            About
-          </Link> */}
+
           <Link href="/features" className="text-gray-300 hover:text-white transition-colors">
             Features
+          </Link>
+          <Link href="/about" className="text-gray-300 hover:text-white transition-colors">
+            About
           </Link>
           {/* <Link href="#pricing" className="text-gray-300 hover:text-white transition-colors">
             Pricing

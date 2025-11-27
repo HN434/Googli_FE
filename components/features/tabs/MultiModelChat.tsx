@@ -305,7 +305,7 @@ export default function MultiModelChat() {
     };
 
     return (
-        <div className="flex h-[600px] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl overflow-hidden shadow-2xl">
+        <div className="flex h-[600px] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl overflow-hidden shadow-2xl relative">
             {/* Chat History Sidebar */}
             <div className={`${showHistory ? 'w-64' : 'w-0'} transition-all duration-300 bg-slate-900/50 border-r border-slate-700/50 flex flex-col overflow-hidden`}>
                 <div className="p-4 border-b border-slate-700/50">
@@ -541,113 +541,93 @@ export default function MultiModelChat() {
                 </div>
             </div>
 
-            {/* Settings Modal */}
-            {showSettings && (
-                <div
-                    className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-                    onClick={() => setShowSettings(false)}
-                >
-                    <div
-                        className="bg-slate-900 rounded-xl p-6 max-w-md w-full mx-4 border border-slate-700 shadow-2xl"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <h3 className="text-xl font-semibold text-white mb-4">Settings</h3>
-
-                        <div className="space-y-4">
-                            {/* Voice Settings */}
-                            <div>
-                                <h4 className="text-sm font-medium text-slate-300 mb-3">Voice Response</h4>
-
-                                <label className="flex items-center justify-between mb-3">
-                                    <span className="text-sm text-slate-400">Enable Voice</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={voiceSettings.enabled}
-                                        onChange={(e) => setVoiceSettings(prev => ({ ...prev, enabled: e.target.checked }))}
-                                        className="w-10 h-5 bg-slate-700 rounded-full relative cursor-pointer appearance-none checked:bg-emerald-500 transition-colors"
-                                    />
-                                </label>
-
-                                {voiceSettings.enabled && (
-                                    <>
-                                        <div className="mb-3">
-                                            <label className="text-sm text-slate-400 block mb-1">Language</label>
-                                            <select
-                                                value={voiceSettings.language}
-                                                onChange={(e) => setVoiceSettings(prev => ({ ...prev, language: e.target.value }))}
-                                                className="w-full px-3 py-2 bg-slate-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                            >
-                                                <option value="English">English</option>
-                                                <option value="Hindi">Hindi</option>
-                                                <option value="Tamil">Tamil</option>
-                                                <option value="Telugu">Telugu</option>
-                                            </select>
-                                        </div>
-
-                                        <div className="mb-3">
-                                            <label className="text-sm text-slate-400 block mb-1">Voice</label>
-                                            <select
-                                                value={voiceSettings.gender}
-                                                onChange={(e) => setVoiceSettings(prev => ({ ...prev, gender: e.target.value }))}
-                                                className="w-full px-3 py-2 bg-slate-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                            >
-                                                <option value="Female">Female</option>
-                                                <option value="Male">Male</option>
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <label className="text-sm text-slate-400 block mb-1">Persona</label>
-                                            <select
-                                                value={voiceSettings.persona}
-                                                onChange={(e) => setVoiceSettings(prev => ({ ...prev, persona: e.target.value }))}
-                                                className="w-full px-3 py-2 bg-slate-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                            >
-                                                <option value="Professional">Professional</option>
-                                                <option value="Casual">Casual</option>
-                                                <option value="Enthusiastic">Enthusiastic</option>
-                                            </select>
-                                        </div>
-                                    </>
-                                )}
+            {/* Settings Drawer from Top - Minimal */}
+            <div className={`absolute top-0 left-0 right-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border-b border-gray-700 shadow-2xl z-50 transition-all duration-300 ease-in-out ${showSettings ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
+                <div className="max-w-4xl mx-auto px-6 py-5">
+                    {/* Minimal Header with Close */}
+                    <div className="flex items-center justify-between mb-5">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400/20 to-teal-500/20 flex items-center justify-center">
+                                <span className="text-xl">🔊</span>
                             </div>
-
-                            {/* Model Settings */}
-                            <div className="pt-4 border-t border-slate-700">
-                                <h4 className="text-sm font-medium text-slate-300 mb-3">AWS Bedrock</h4>
-
-                                <div className="mb-3">
-                                    <label className="text-sm text-slate-400 block mb-1">Model</label>
-                                    <select
-                                        value={bedrockService.modelId}
-                                        onChange={(e) => bedrockService.setModelId(e.target.value)}
-                                        className="w-full px-3 py-2 bg-slate-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                    >
-                                        {bedrockService.getAvailableModels().map(model => (
-                                            <option key={model.id} value={model.id}>
-                                                {model.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="text-sm text-slate-400">
-                                    <p>Region: {bedrockService.region}</p>
-                                    <p className={bedrockService.initialized ? 'text-emerald-400' : 'text-yellow-400'}>
-                                        Status: {bedrockService.initialized ? '✓ Connected' : '○ Basic Mode'}
-                                    </p>
-                                </div>
+                            <div>
+                                <h4 className="text-base font-semibold text-white">Voice Response</h4>
+                                <p className="text-xs text-gray-400">Configure AI voice settings</p>
                             </div>
                         </div>
+                        <div className="flex items-center gap-3">
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={voiceSettings.enabled}
+                                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, enabled: e.target.checked }))}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-400/30 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-400 peer-checked:to-teal-500"></div>
+                            </label>
+                            <button
+                                onClick={() => setShowSettings(false)}
+                                className="p-2 hover:bg-gray-700/50 rounded-lg transition-all duration-200"
+                                title="Close"
+                            >
+                                <span className="text-lg text-gray-400 hover:text-white">✕</span>
+                            </button>
+                        </div>
+                    </div>
 
-                        <button
-                            onClick={() => setShowSettings(false)}
-                            className="w-full mt-6 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
-                        >
-                            Close
-                        </button>
+                    {/* Compact Settings Grid */}
+                    <div className="grid grid-cols-3 gap-4">
+                        <div>
+                            <label className="text-xs font-medium text-gray-400 block mb-1.5">Language</label>
+                            <select
+                                value={voiceSettings.language}
+                                onChange={(e) => setVoiceSettings(prev => ({ ...prev, language: e.target.value }))}
+                                disabled={!voiceSettings.enabled}
+                                className="w-full px-3 py-2 text-sm bg-gray-800/80 text-white rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            >
+                                <option value="English">English</option>
+                                <option value="Hindi">Hindi</option>
+                                <option value="Tamil">Tamil</option>
+                                <option value="Telugu">Telugu</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-medium text-gray-400 block mb-1.5">Voice</label>
+                            <select
+                                value={voiceSettings.gender}
+                                onChange={(e) => setVoiceSettings(prev => ({ ...prev, gender: e.target.value }))}
+                                disabled={!voiceSettings.enabled}
+                                className="w-full px-3 py-2 text-sm bg-gray-800/80 text-white rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            >
+                                <option value="Female">Female</option>
+                                <option value="Male">Male</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-medium text-gray-400 block mb-1.5">Persona</label>
+                            <select
+                                value={voiceSettings.persona}
+                                onChange={(e) => setVoiceSettings(prev => ({ ...prev, persona: e.target.value }))}
+                                disabled={!voiceSettings.enabled}
+                                className="w-full px-3 py-2 text-sm bg-gray-800/80 text-white rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            >
+                                <option value="Professional">Normal</option>
+                                <option value="Casual">Casual</option>
+                                <option value="Enthusiastic">Enthusiastic</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
+            </div>
+            
+            {/* Backdrop overlay when settings open */}
+            {showSettings && (
+                <div 
+                    className="absolute inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300"
+                    onClick={() => setShowSettings(false)}
+                />
             )}
         </div>
     );
