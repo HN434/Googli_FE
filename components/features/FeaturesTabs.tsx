@@ -30,13 +30,13 @@ export default function FeaturesTabs() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex flex-col items-center gap-1.5 sm:gap-2 px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 rounded-md sm:rounded-lg font-medium transition-all min-w-[90px] sm:min-w-[110px] md:min-w-[120px] flex-shrink-0 ${activeTab === tab.id
+                className={`flex flex-col items-center gap-2 sm:gap-3 px-5 sm:px-6 md:px-8 py-3 sm:py-4 md:py-5 rounded-lg sm:rounded-xl font-medium transition-all min-w-[110px] sm:min-w-[140px] md:min-w-[160px] flex-shrink-0 ${activeTab === tab.id
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500"
                   : "bg-gray-800/50 text-gray-400 hover:text-white border border-gray-700 hover:border-gray-600"
                   }`}
               >
-                <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="text-[10px] sm:text-xs whitespace-nowrap">{tab.label}</span>
+                <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
+                <span className="text-xs sm:text-sm whitespace-nowrap">{tab.label}</span>
               </button>
             );
           })}

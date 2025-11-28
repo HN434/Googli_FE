@@ -147,6 +147,8 @@ export default function CommentaryTab() {
   const [matchHeader, setMatchHeader] = useState<any>(null);
   const [newEntries, setNewEntries] = useState<CommentaryEntry[]>([]);
 
+  const [pendingFirstSpeech, setPendingFirstSpeech] = useState<CommentaryEntry | null>(null);
+
   const [isCommentaryFetching, setIsCommentaryFetching] = useState(false);
   const [commentaryError, setCommentaryError] = useState<string | null>(null);
   const [matchesLoading, setMatchesLoading] = useState(false);
@@ -176,6 +178,16 @@ export default function CommentaryTab() {
     setAudioService(pollyService.getAudioServiceName());
   }, [isVoiceEnabled]);
 
+  // Handle pending first speech
+  useEffect(() => {
+    if (pendingFirstSpeech) {
+      if (isVoiceEnabled) {
+        pollyService.speakCommentary(pendingFirstSpeech.text, commentaryLanguage, commentaryVoice);
+      }
+      setPendingFirstSpeech(null);
+    }
+  }, [pendingFirstSpeech, isVoiceEnabled, commentaryLanguage, commentaryVoice]);
+
   // Initialize API key from environment variable and load matches
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_RAPIDAPI_KEY;
@@ -195,6 +207,15 @@ export default function CommentaryTab() {
       }
     };
   }, []);
+
+  // Reconnect WebSocket when language changes during active commentary
+  useEffect(() => {
+    if (isCommentaryFetching && selectedMatchId && wsRef.current) {
+      // Reconnect with new language
+      console.log('Language changed, reconnecting WebSocket...');
+      connectWebSocket(selectedMatchId);
+    }
+  }, [commentaryLanguage]);
 
   // Process Commentary Queue
   useEffect(() => {
@@ -220,9 +241,21 @@ export default function CommentaryTab() {
       }
     };
 
-    const intervalId = setInterval(processQueue, 3000); // 3 second delay between balls
+    const intervalId = setInterval(processQueue, 6000); // 6 second delay between balls
     return () => clearInterval(intervalId);
   }, [isVoiceEnabled, commentaryLanguage, commentaryVoice]);
+
+  // Helper function to map language names to language codes
+  const getLanguageCode = (language: string): string => {
+    const languageMap: { [key: string]: string } = {
+      'English': 'en',
+      'Hindi': 'hi',
+      'Tamil': 'ta',
+      'Telugu': 'te',
+      'Spanish': 'es'
+    };
+    return languageMap[language] || 'en';
+  };
 
   const loadMatches = async () => {
     setMatchesLoading(true);
@@ -251,7 +284,12 @@ export default function CommentaryTab() {
     setHasMoreBalls(true);
 
     try {
-      const ws = new WebSocket(`${BACKEND_WS_URL}${matchId}`);
+      // Get language code and add it as query parameter
+      const languageCode = getLanguageCode(commentaryLanguage);
+      const wsUrl = `${BACKEND_WS_URL}${matchId}?language=${languageCode}`;
+      console.log('Connecting to WebSocket with language:', languageCode);
+
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -302,6 +340,11 @@ export default function CommentaryTab() {
 
                 // Update lastFiveBalls reference
                 lastFiveBalls.current = ballsToDisplay.slice(0, 5);
+
+                // Trigger speech for the most recent ball (first in the list)
+                if (ballsToDisplay.length > 0) {
+                  setPendingFirstSpeech(ballsToDisplay[0]);
+                }
 
                 isFirstLoad.current = false;
               } else {
@@ -446,12 +489,16 @@ export default function CommentaryTab() {
     const inningsId = lastBall.inningsId || (miniscore?.inningsid ? parseInt(miniscore.inningsid) : 1);
     const timestamp = lastBall.timestamp;
 
+    // Get language code for the API request
+    const languageCode = getLanguageCode(commentaryLanguage);
+
     setIsLoadingMore(true);
     try {
       const previousBalls = await cricketApi.fetchPreviousCommentary(
         selectedMatchId,
         inningsId,
-        timestamp
+        timestamp,
+        languageCode  // Pass the selected language
       );
 
       if (previousBalls.length > 0) {
@@ -616,8 +663,7 @@ export default function CommentaryTab() {
               >
                 <option value="English">English</option>
                 <option value="Hindi">Hindi</option>
-                <option value="Tamil">Tamil</option>
-                <option value="Telugu">Telugu</option>
+                <option value="Spanish">Spanish</option>
               </select>
               <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
                 <svg className="w-4 h-4 text-gray-400 group-hover:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -688,7 +734,7 @@ export default function CommentaryTab() {
             <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
               <div className="flex items-center gap-2 text-xs text-gray-400">
                 <span className="text-emerald-400">🔊</span>
-                <span>Audio: {audioService}</span>
+                <span>Audio</span>
               </div>
               <button
                 className="px-3 py-1.5 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 hover:bg-emerald-500/30 transition-all text-xs font-semibold"

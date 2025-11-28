@@ -1,7 +1,35 @@
 /**
  * Polly Text-to-Speech Service
- * Uses browser's Web Speech API for voice commentary
+ * Supports AWS Polly (with fallback to browser's Web Speech API)
  */
+
+// Type definitions for AWS SDK (loaded dynamically)
+interface AWSCredentials {
+    accessKeyId: string;
+    secretAccessKey: string;
+}
+
+interface PollyParams {
+    Text: string;
+    OutputFormat: string;
+    VoiceId: string;
+    Engine: string;
+    TextType: string;
+}
+
+interface PollyResponse {
+    AudioStream: Uint8Array;
+}
+
+interface TranslateParams {
+    Text: string;
+    SourceLanguageCode: string;
+    TargetLanguageCode: string;
+}
+
+interface TranslateResponse {
+    TranslatedText: string;
+}
 
 interface QueueItem {
     text: string;
@@ -9,24 +37,63 @@ interface QueueItem {
     gender: string;
 }
 
+interface Commentary {
+    text?: string;
+}
+
 class PollyService {
+    private polly: any = null;
+    private audioContext: AudioContext | null = null;
     private currentAudio: HTMLAudioElement | null = null;
     private queue: QueueItem[] = [];
     private isPlaying: boolean = false;
     private initialized: boolean = false;
+    private credentials: AWSCredentials | null = null;
+    private region: string = 'us-east-1';
 
     /**
-     * Initialize AWS Polly (compatibility method)
-     * Note: This Next.js version uses browser speech, but we keep this method for API compatibility
+     * Initialize AWS Polly with credentials
      */
-    async initialize(accessKeyId: string, secretAccessKey: string, region: string = 'us-east-1'): Promise<boolean> {
-        console.log('[Polly] AWS Polly not implemented in Next.js version, using browser speech synthesis');
-        // Simply initialize browser speech
-        return this.initializeBrowserSpeech();
+    async initialize(
+        awsAccessKeyId: string,
+        awsSecretAccessKey: string,
+        region: string = 'us-east-1'
+    ): Promise<boolean> {
+        if (typeof window === 'undefined') {
+            throw new Error('Polly service requires browser environment');
+        }
+
+        this.region = region;
+        this.credentials = {
+            accessKeyId: awsAccessKeyId,
+            secretAccessKey: awsSecretAccessKey,
+        };
+
+        try {
+            // Import AWS SDK dynamically
+            const AWS = await import('aws-sdk');
+
+            AWS.config.update({
+                region: this.region,
+                credentials: new AWS.Credentials(
+                    this.credentials.accessKeyId,
+                    this.credentials.secretAccessKey
+                ),
+            });
+
+            this.polly = new AWS.Polly();
+            this.initialized = true;
+
+            console.log('AWS Polly initialized successfully');
+            return true;
+        } catch (error) {
+            console.error('Failed to initialize AWS Polly:', error);
+            throw new Error(`Polly initialization failed: ${(error as Error).message}`);
+        }
     }
 
     /**
-     * Initialize browser speech synthesis
+     * Use browser's Web Speech API as fallback
      */
     initializeBrowserSpeech(): boolean {
         if (typeof window === 'undefined') {
@@ -37,6 +104,7 @@ class PollyService {
             throw new Error('Browser speech synthesis not supported');
         }
 
+        // Load voices (needed for some browsers like Chrome)
         const loadVoices = () => {
             const voices = window.speechSynthesis.getVoices();
             console.log(`Browser speech: ${voices.length} voices loaded`);
@@ -45,11 +113,20 @@ class PollyService {
             }
         };
 
+        // Voices may load asynchronously in some browsers
         if (window.speechSynthesis.onvoiceschanged !== undefined) {
             window.speechSynthesis.onvoiceschanged = loadVoices;
         }
 
+        // Try to load voices immediately
         loadVoices();
+
+        // Test audio output
+        console.log('Speech synthesis state:', {
+            speaking: window.speechSynthesis.speaking,
+            pending: window.speechSynthesis.pending,
+            paused: window.speechSynthesis.paused,
+        });
 
         this.initialized = true;
         console.log('Using browser speech synthesis');
@@ -57,7 +134,210 @@ class PollyService {
     }
 
     /**
-     * Convert text to speech using browser's Web Speech API
+     * Test if audio output is working
+     */
+    async testAudioOutput(): Promise<boolean> {
+        if (typeof window === 'undefined' || !window.speechSynthesis) {
+            return false;
+        }
+
+        return new Promise((resolve) => {
+            const testUtterance = new SpeechSynthesisUtterance('Test');
+            testUtterance.volume = 1.0;
+            testUtterance.rate = 2.0; // Fast test
+
+            testUtterance.onend = () => {
+                console.log('Audio test successful');
+                resolve(true);
+            };
+
+            testUtterance.onerror = () => {
+                console.log('Audio test failed');
+                resolve(false);
+            };
+
+            setTimeout(() => resolve(false), 2000); // Timeout after 2 seconds
+            window.speechSynthesis.speak(testUtterance);
+        });
+    }
+
+    /**
+     * Get available voices based on language and gender
+     */
+    getVoiceId(language: string = 'English', gender: string = 'Male'): string {
+        const voiceMap: Record<string, string> = {
+            'English-Male': 'Matthew',
+            'English-Female': 'Joanna',
+            'Hindi-Male': 'Aditi', // Aditi supports both standard (no male Hindi voice available)
+            'Hindi-Female': 'Aditi',
+            'Tamil-Male': 'Raveena', // Using Indian English voice (no native Tamil voice)
+            'Tamil-Female': 'Raveena',
+            'Telugu-Male': 'Raveena', // Using Indian English voice (no native Telugu voice)
+            'Telugu-Female': 'Raveena',
+        };
+
+        const key = `${language}-${gender}`;
+        const voiceId = voiceMap[key] || 'Matthew';
+
+        // Log voice selection for debugging
+        console.log(`[Polly] Selected voice: ${voiceId} for ${language}-${gender}`);
+
+        return voiceId;
+    }
+
+    /**
+     * Convert text to speech using AWS Polly
+     */
+    async speakWithPolly(
+        text: string,
+        language: string = 'English',
+        gender: string = 'Male'
+    ): Promise<void> {
+        console.log('[Polly] speakWithPolly called');
+        console.log('[Polly] Initialized:', this.initialized);
+        console.log('[Polly] Polly client exists:', !!this.polly);
+        console.log('[Polly] Credentials:', this.credentials ? 'Present' : 'Missing');
+
+        if (!this.initialized || !this.polly) {
+            console.warn('[Polly] ❌ Polly not properly initialized, using browser speech fallback');
+            console.warn('[Polly] - initialized:', this.initialized);
+            console.warn('[Polly] - polly client:', !!this.polly);
+            return this.speakWithBrowser(text, language);
+        }
+
+        try {
+            console.log('[Polly] ✅ AWS Polly is initialized, using AWS Polly');
+            console.log('[Polly] AWS Polly speaking:', text.substring(0, 50), 'Language:', language);
+
+            // Translate text if not English using AWS Translate
+            if (language !== 'English') {
+                const originalText = text;
+                text = await this.translateText(text, language);
+                console.log('[Polly] AWS Translated from:', originalText.substring(0, 30));
+                console.log('[Polly] AWS Translated to:', text.substring(0, 30));
+            }
+
+            const voiceId = this.getVoiceId(language, gender);
+            console.log('[Polly] Using AWS Polly voice:', voiceId);
+
+            // Try with neural engine first, fall back to standard if not supported
+            let params: PollyParams = {
+                Text: text,
+                OutputFormat: 'mp3',
+                VoiceId: voiceId,
+                Engine: 'neural', // Use neural engine for better quality
+                TextType: 'text',
+            };
+
+            let data: PollyResponse;
+            try {
+                data = await this.polly.synthesizeSpeech(params).promise();
+            } catch (neuralError: any) {
+                if (neuralError.message && neuralError.message.includes('does not support')) {
+                    // Retry with standard engine
+                    console.log('[Polly] Neural engine not supported for this voice, using standard engine');
+                    params.Engine = 'standard';
+                    data = await this.polly.synthesizeSpeech(params).promise();
+                } else {
+                    throw neuralError;
+                }
+            }
+
+            // Create audio from the response
+            const audioBlob = new Blob([data.AudioStream], { type: 'audio/mpeg' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+
+            console.log('[Polly] AWS Polly audio generated successfully');
+
+            return this.playAudio(audioUrl);
+        } catch (error) {
+            console.error('[Polly] AWS Polly speech error:', error);
+            console.error('[Polly] Error details:', (error as Error).message);
+            // Fallback to browser speech
+            console.log('[Polly] Falling back to browser speech');
+            return this.speakWithBrowser(text, language);
+        }
+    }
+
+    /**
+     * Translate text using AWS Translate (or fallback to English romanization)
+     */
+    async translateText(text: string, targetLanguage: string): Promise<string> {
+        // If English, no translation needed
+        if (targetLanguage === 'English') {
+            return text;
+        }
+
+        // Try AWS Translate if credentials available
+        if (this.credentials && this.credentials.accessKeyId) {
+            try {
+                const AWS = await import('aws-sdk');
+
+                const translate = new AWS.Translate({
+                    region: this.region,
+                    credentials: new AWS.Credentials(
+                        this.credentials.accessKeyId,
+                        this.credentials.secretAccessKey
+                    ),
+                });
+
+                const languageCodeMap: Record<string, string> = {
+                    Hindi: 'hi',
+                    Tamil: 'ta',
+                    Telugu: 'te',
+                };
+
+                const targetCode = languageCodeMap[targetLanguage] || 'hi';
+
+                const params: TranslateParams = {
+                    Text: text,
+                    SourceLanguageCode: 'en',
+                    TargetLanguageCode: targetCode,
+                };
+
+                console.log('[Polly] Translating with AWS Translate:', text.substring(0, 50));
+
+                const result: TranslateResponse = await translate.translateText(params).promise();
+
+                console.log('[Polly] Translation result:', result.TranslatedText.substring(0, 50));
+
+                return result.TranslatedText;
+            } catch (error) {
+                console.warn('[Polly] AWS Translate not available, using fallback:', (error as Error).message);
+                // Fall through to romanization
+            }
+        }
+
+        // Fallback: Enhanced romanization/transliteration for browser speech
+        console.log('[Polly] Using romanization for:', targetLanguage);
+        console.warn(
+            '[Polly] AWS Translate not configured. For full translation, add translate:TranslateText permission to your IAM policy.'
+        );
+
+        // For Hindi/Tamil/Telugu browser speech, keep English text but make it more natural
+        // Browser will use Hindi/Tamil/Telugu voice to read English text with native accent
+        if (targetLanguage === 'Hindi') {
+            // Replace cricket terms with phonetic Hindi for better pronunciation
+            text = text.replace(/\bfour runs\b/gi, 'chaar runs');
+            text = text.replace(/\bfour\b/gi, 'chauka');
+            text = text.replace(/\bsix runs\b/gi, 'chhah runs');
+            text = text.replace(/\bsix\b/gi, 'chhakka');
+            text = text.replace(/\bout\b/gi, 'out');
+            text = text.replace(/\bwicket\b/gi, 'wicket');
+            text = text.replace(/\bbowled\b/gi, 'bowled');
+            text = text.replace(/\bcaught\b/gi, 'catch out');
+            text = text.replace(/\bdelivery\b/gi, 'ball');
+            text = text.replace(/\bover\b/gi, 'over');
+            text = text.replace(/\bruns\b/gi, 'runs');
+            text = text.replace(/\bdot ball\b/gi, 'dot ball');
+        }
+
+        console.log('[Polly] Romanization result (English text will be spoken with native accent)');
+        return text;
+    }
+
+    /**
+     * Convert text to speech using browser's Web Speech API (fallback)
      */
     async speakWithBrowser(text: string, language: string = 'English'): Promise<void> {
         if (typeof window === 'undefined' || !window.speechSynthesis) {
@@ -66,28 +346,42 @@ class PollyService {
         }
 
         try {
-            console.log('[Polly] Using browser speech for:', text.substring(0, 50));
+            console.log('[Polly] Using browser speech for:', text.substring(0, 50), 'Language:', language);
 
+            // Translate if not English (AWS Translate will be used if available, otherwise romanization)
+            if (language !== 'English') {
+                const originalText = text;
+                text = await this.translateText(text, language);
+                console.log('[Polly] Translated from:', originalText.substring(0, 30));
+                console.log('[Polly] Translated to:', text.substring(0, 30));
+            }
+
+            // Cancel any ongoing speech
             window.speechSynthesis.cancel();
-            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Wait a bit to ensure cancellation is processed
+            await new Promise((resolve) => setTimeout(resolve, 100));
 
             const utterance = new SpeechSynthesisUtterance(text);
 
+            // Set language
             const langMap: Record<string, string> = {
-                'English': 'en-US',
-                'Hindi': 'hi-IN',
-                'Tamil': 'ta-IN',
-                'Telugu': 'te-IN'
+                English: 'en-US',
+                Hindi: 'hi-IN',
+                Tamil: 'ta-IN',
+                Telugu: 'te-IN',
             };
             utterance.lang = langMap[language] || 'en-US';
 
             console.log('[Polly] Speech language set to:', utterance.lang);
 
+            // Try to select appropriate voice
             let voices = window.speechSynthesis.getVoices();
 
+            // If no voices loaded, wait a bit and try again
             if (voices.length === 0) {
                 console.log('[Polly] No voices loaded yet, waiting...');
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise((resolve) => setTimeout(resolve, 100));
                 voices = window.speechSynthesis.getVoices();
             }
 
@@ -95,8 +389,9 @@ class PollyService {
 
             return new Promise((resolve) => {
                 if (voices.length > 0) {
+                    // Try to find a voice matching the language
                     const targetLang = langMap[language] || 'en-US';
-                    const matchingVoice = voices.find(voice =>
+                    const matchingVoice = voices.find((voice) =>
                         voice.lang.startsWith(targetLang.split('-')[0])
                     );
 
@@ -104,6 +399,7 @@ class PollyService {
                         utterance.voice = matchingVoice;
                         console.log('[Polly] Using voice:', matchingVoice.name, matchingVoice.lang);
                     } else {
+                        // Use default voice
                         utterance.voice = voices[0];
                         console.log('[Polly] Using default voice:', voices[0].name);
                     }
@@ -111,9 +407,10 @@ class PollyService {
                     console.warn('[Polly] No voices available, using browser default');
                 }
 
+                // Set voice parameters - maximize volume
                 utterance.rate = 1.0;
                 utterance.pitch = 1.0;
-                utterance.volume = 1.0;
+                utterance.volume = 1.0; // Max volume
 
                 utterance.onstart = () => {
                     console.log('[Polly] Browser speech started');
@@ -126,37 +423,78 @@ class PollyService {
 
                 utterance.onerror = (error) => {
                     console.error('[Polly] Speech synthesis error:', error);
+                    console.error('[Polly] Error details:', {
+                        error: error.error,
+                        charIndex: error.charIndex,
+                        elapsedTime: error.elapsedTime,
+                        text: text.substring(0, 50),
+                    });
+                    // Don't reject on error, just resolve to continue
                     resolve();
                 };
 
                 console.log('[Polly] Speaking with browser - Text:', text.substring(0, 50) + '...');
+                console.log('[Polly] Volume:', utterance.volume, 'Rate:', utterance.rate);
 
+                // Resume speech synthesis if paused
                 if (window.speechSynthesis.paused) {
                     console.log('[Polly] Speech was paused, resuming...');
                     window.speechSynthesis.resume();
                 }
 
+                // Speak the utterance
                 window.speechSynthesis.speak(utterance);
                 console.log('[Polly] Speech queued for playback');
 
+                // Fallback timeout in case onend never fires
                 setTimeout(() => {
                     if (window.speechSynthesis.speaking) {
                         console.warn('[Polly] Speech synthesis timeout, forcing cancel');
                         window.speechSynthesis.cancel();
                         resolve();
                     }
-                }, 30000);
+                }, 30000); // 30 second timeout
             });
         } catch (error) {
             console.error('[Polly] Browser speech error:', error);
-            return Promise.resolve();
+            return Promise.resolve(); // Resolve anyway to not block
         }
+    }
+
+    /**
+     * Play audio from URL
+     */
+    async playAudio(audioUrl: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            // Stop current audio if playing
+            if (this.currentAudio) {
+                this.currentAudio.pause();
+                this.currentAudio = null;
+            }
+
+            const audio = new Audio(audioUrl);
+            this.currentAudio = audio;
+
+            audio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+                this.currentAudio = null;
+                resolve();
+            };
+
+            audio.onerror = (error) => {
+                URL.revokeObjectURL(audioUrl);
+                this.currentAudio = null;
+                reject(error);
+            };
+
+            audio.play().catch(reject);
+        });
     }
 
     /**
      * Add commentary to speech queue
      */
-    queueCommentary(text: string, language: string = 'English', gender: string = 'Male') {
+    queueCommentary(text: string, language: string = 'English', gender: string = 'Male'): void {
         this.queue.push({ text, language, gender });
 
         if (!this.isPlaying) {
@@ -167,7 +505,7 @@ class PollyService {
     /**
      * Process speech queue
      */
-    async processQueue() {
+    async processQueue(): Promise<void> {
         if (this.queue.length === 0) {
             this.isPlaying = false;
             return;
@@ -178,56 +516,74 @@ class PollyService {
 
         if (item) {
             try {
-                await this.speakWithBrowser(item.text, item.language);
+                if (this.polly) {
+                    await this.speakWithPolly(item.text, item.language, item.gender);
+                } else {
+                    await this.speakWithBrowser(item.text, item.language);
+                }
             } catch (error) {
                 console.error('Error processing speech queue:', error);
             }
         }
 
+        // Process next item
         setTimeout(() => this.processQueue(), 500);
     }
 
     /**
      * Stop current speech and clear queue
      */
-    stop() {
+    stop(): void {
+        // Stop current audio
         if (this.currentAudio) {
             this.currentAudio.pause();
             this.currentAudio = null;
         }
 
+        // Stop browser speech
         if (typeof window !== 'undefined' && window.speechSynthesis) {
             window.speechSynthesis.cancel();
         }
 
+        // Clear queue
         this.queue = [];
         this.isPlaying = false;
     }
 
     /**
      * Clean and format text for better speech output
+     * IMPORTANT: Preserve Unicode characters for Hindi/Tamil/Telugu
      */
     formatTextForSpeech(text: string): string {
+        // Convert to string if not already
         text = String(text || '');
 
-        // Remove emojis and special characters
-        text = text.replace(/[\u{1F000}-\u{1F9FF}]/gu, '');
-        text = text.replace(/[\u{2600}-\u{27BF}]/gu, '');
-        text = text.replace(/[\u{1F300}-\u{1F5FF}]/gu, '');
-        text = text.replace(/[\u{1F600}-\u{1F64F}]/gu, '');
-        text = text.replace(/[\u{1F680}-\u{1F6FF}]/gu, '');
-        text = text.replace(/[\u{2700}-\u{27BF}]/gu, '');
-        text = text.replace(/[\u{FE00}-\u{FE0F}]/gu, '');
-        text = text.replace(/[\u{1F900}-\u{1F9FF}]/gu, '');
+        // Remove only emojis (but keep Hindi/Tamil/Telugu/Devanagari text)
+        text = text.replace(/[\u{1F000}-\u{1F9FF}]/gu, ''); // Emoticons
+        text = text.replace(/[\u{2600}-\u{27BF}]/gu, ''); // Misc symbols (but not Devanagari)
+        text = text.replace(/[\u{1F300}-\u{1F5FF}]/gu, ''); // Misc symbols & pictographs
+        text = text.replace(/[\u{1F600}-\u{1F64F}]/gu, ''); // Emoticons
+        text = text.replace(/[\u{1F680}-\u{1F6FF}]/gu, ''); // Transport & map symbols
+        text = text.replace(/[\u{2700}-\u{27BF}]/gu, ''); // Dingbats
+        text = text.replace(/[\u{FE00}-\u{FE0F}]/gu, ''); // Variation selectors
+        text = text.replace(/[\u{1F900}-\u{1F9FF}]/gu, ''); // Supplemental symbols
 
-        text = text.replace(/[^\x00-\x7F\s]/g, '');
-        text = text.replace(/[$#@%^&*_+=[\]{}|\\<>~`]/g, '');
+        // IMPORTANT: DO NOT remove non-ASCII characters!
+        // Hindi (Devanagari): U+0900–U+097F
+        // Tamil: U+0B80–U+0BFF
+        // Telugu: U+0C00–U+0C7F
+        // We want to KEEP these characters for proper speech synthesis!
 
+        // Only remove specific special formatting characters that cause speech issues
+        text = text.replace(/[$#@%^&*_+=\[\]{}|\\<>~`]/g, '');
+
+        // Add pauses for better clarity
         text = text.replace(/\./g, '. ');
         text = text.replace(/,/g, ', ');
         text = text.replace(/!/g, '! ');
         text = text.replace(/\?/g, '? ');
 
+        // Clean up multiple spaces
         text = text.replace(/\s+/g, ' ').trim();
 
         return text;
@@ -236,23 +592,43 @@ class PollyService {
     /**
      * Speak commentary with excitement based on event type
      */
-    async speakCommentary(commentary: string | { text: string }, language: string = 'English', gender: string = 'Male'): Promise<void> {
-        let text = typeof commentary === 'string' ? commentary : commentary.text;
+    async speakCommentary(
+        commentary: string | Commentary,
+        language: string = 'English',
+        gender: string = 'Male',
+        onComplete?: () => void
+    ): Promise<void> {
+        let text = typeof commentary === 'string' ? commentary : commentary.text || '';
 
         console.log('[Polly] Original text:', text);
 
+        // Format text for speech
         text = this.formatTextForSpeech(text);
 
         console.log('[Polly] Formatted text:', text);
 
+        // Add emphasis for exciting events
         if (text.includes('FOUR') || text.includes('SIX') || text.includes('WICKET')) {
+            // Make it more exciting
             text = text.toUpperCase();
         }
 
-        try {
-            await this.speakWithBrowser(text, language);
-        } catch (error) {
-            console.error('Error speaking commentary:', error);
+        // If callback provided, speak directly instead of queuing
+        if (onComplete) {
+            try {
+                if (this.polly) {
+                    await this.speakWithPolly(text, language, gender);
+                } else {
+                    await this.speakWithBrowser(text, language);
+                }
+                onComplete();
+            } catch (error) {
+                console.error('Error speaking commentary:', error);
+                onComplete(); // Call callback even on error
+            }
+        } else {
+            // Queue the commentary (old behavior)
+            this.queueCommentary(text, language, gender);
         }
     }
 
@@ -268,20 +644,20 @@ class PollyService {
      * Get the name of the current audio service being used
      */
     getAudioServiceName(): string {
-        if (typeof window === 'undefined') {
+        if (this.polly) {
+            return 'AWS Polly';
+        } else if (typeof window !== 'undefined' && window.speechSynthesis && this.initialized) {
+            return 'Browser Speech Synthesis';
+        } else {
             return 'No Audio Service';
         }
-        if (window.speechSynthesis && this.initialized) {
-            return 'Browser Speech Synthesis';
-        }
-        return 'No Audio Service';
     }
 }
 
 // Create singleton instance
 const pollyService = new PollyService();
 
-// Initialize browser speech by default
+// Initialize browser speech by default (no credentials needed)
 if (typeof window !== 'undefined') {
     try {
         pollyService.initializeBrowserSpeech();

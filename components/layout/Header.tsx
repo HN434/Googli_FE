@@ -11,9 +11,10 @@ export default function Header() {
         </Link>
 
         <div className="hidden md:flex items-center gap-8">
-          {/* <Link href="/about" className="text-gray-300 hover:text-white transition-colors">
+
+          <Link href="/about" className="text-gray-300 hover:text-white transition-colors">
             About
-          </Link> */}
+          </Link>
           <Link href="/features" className="text-gray-300 hover:text-white transition-colors">
             Features
           </Link>
@@ -22,7 +23,7 @@ export default function Header() {
           </Link> */}
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 mr-[120px]">
           {/* <Button variant="ghost">Login</Button>
           <Button variant="primary">Sign Up</Button> */}
         </div>
