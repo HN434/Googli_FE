@@ -887,7 +887,7 @@ export default function CommentaryTab() {
                 })}
 
                 {/* Load More Button */}
-                {displayEntries.length >= 20 && hasMoreBalls && (
+                {displayEntries.length >= 5 && hasMoreBalls && (
                   <div className="pt-4 pb-2">
                     <button
                       onClick={handleLoadMore}
