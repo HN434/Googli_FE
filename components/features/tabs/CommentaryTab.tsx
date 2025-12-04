@@ -383,14 +383,24 @@ export default function CommentaryTab() {
                   });
                 }
 
-                // Add only new balls (not in processedKeys) to queue for delayed display
-                // Sort by timestamp ascending for proper order in queue
-                const newBalls = incomingEntries.filter(entry => !processedKeys.current.has(entry.key));
-                newBalls.sort((a, b) => a.timestamp - b.timestamp);
+                // Get the maximum timestamp from existing entries to filter truly new balls
+                setCommentaryEntries(prev => {
+                  const maxExistingTimestamp = prev.length > 0 ? Math.max(...prev.map(e => e.timestamp)) : 0;
 
-                newBalls.forEach(entry => {
-                  processedKeys.current.add(entry.key);
-                  incomingQueue.current.push(entry);
+                  // Add only new balls with greater timestamp (not in processedKeys and timestamp > max existing)
+                  const newBalls = incomingEntries.filter(entry =>
+                    !processedKeys.current.has(entry.key) && entry.timestamp > maxExistingTimestamp
+                  );
+
+                  // Sort by timestamp ascending for proper order in queue
+                  newBalls.sort((a, b) => a.timestamp - b.timestamp);
+
+                  newBalls.forEach(entry => {
+                    processedKeys.current.add(entry.key);
+                    incomingQueue.current.push(entry);
+                  });
+
+                  return prev;
                 });
               }
             }
