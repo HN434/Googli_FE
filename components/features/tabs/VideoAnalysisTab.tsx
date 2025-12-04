@@ -591,7 +591,7 @@ export default function VideoAnalysisTab() {
                 </h2>
                 <p className="text-sm sm:text-base text-slate-400">AI-powered insights to improve your technique</p>
               </div>
-              <button
+              {/* <button
                 onClick={async () => {
                   if (uploadedVideoId) {
                     const data = await fetchBedrockAnalytics(uploadedVideoId);
@@ -605,7 +605,7 @@ export default function VideoAnalysisTab() {
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>Refresh</span>
-              </button>
+              </button> */}
             </div>
 
             {/* Summary Section - Enhanced */}
