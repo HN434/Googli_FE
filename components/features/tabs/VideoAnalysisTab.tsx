@@ -431,11 +431,11 @@ export default function VideoAnalysisTab() {
       {uploadStatus && !isUploading && !isProcessing && !isFetchingAnalysis && !error && (
         <div className="mb-4 bg-emerald-900/30 border border-emerald-700 rounded-lg p-4">
           <p className="text-emerald-200 font-medium">✓ {uploadStatus}</p>
-          {keypointsData.length > 0 && (
+          {/* {keypointsData.length > 0 && (
             <p className="text-emerald-400 text-sm mt-1">
               Loaded {keypointsData.length} frames of skeleton data
             </p>
-          )}
+          )} */}
         </div>
       )}
 
