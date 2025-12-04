@@ -399,27 +399,27 @@ export default function VideoAnalysisTab() {
   };
 
   return (
-    <div className="flex flex-col items-center w-full max-w-6xl mx-auto p-6">
+    <div className="flex flex-col items-center w-full max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
       {/* Header */}
-      <div className="text-center mb-8 space-y-2">
-        <h2 className="text-3xl font-bold text-emerald-400">
+      <div className="text-center mb-6 sm:mb-8 space-y-1 sm:space-y-2">
+        <h2 className="text-2xl sm:text-3xl font-bold text-emerald-400">
           Technique Analysis
         </h2>
-        <p className="text-slate-400">
+        <p className="text-sm sm:text-base text-slate-400 px-2">
           AI-powered skeleton tracking for shot improvement
         </p>
       </div>
 
       {/* Status Messages */}
       {(isUploading || isProcessing || isFetchingAnalysis || wsConnecting) && (
-        <div className="mb-4 bg-blue-900/30 border border-blue-700 rounded-lg p-4 flex items-center gap-3">
-          <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
-          <div>
-            <p className="text-blue-200 font-medium">
+        <div className="mb-3 sm:mb-4 bg-blue-900/30 border border-blue-700 rounded-lg p-3 sm:p-4 flex items-start sm:items-center gap-2 sm:gap-3">
+          <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 animate-spin flex-shrink-0 mt-0.5 sm:mt-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm sm:text-base text-blue-200 font-medium break-words">
               {wsConnecting ? 'Connecting to live updates...' : uploadStatus}
             </p>
             {wsConnected && isProcessing && (
-              <p className="text-blue-400 text-sm mt-1">
+              <p className="text-blue-400 text-xs sm:text-sm mt-1">
                 ✓ Connected - Waiting for analysis results...
               </p>
             )}
@@ -429,8 +429,8 @@ export default function VideoAnalysisTab() {
 
       {/* Success Message */}
       {uploadStatus && !isUploading && !isProcessing && !isFetchingAnalysis && !error && (
-        <div className="mb-4 bg-emerald-900/30 border border-emerald-700 rounded-lg p-4">
-          <p className="text-emerald-200 font-medium">✓ {uploadStatus}</p>
+        <div className="mb-3 sm:mb-4 bg-emerald-900/30 border border-emerald-700 rounded-lg p-3 sm:p-4">
+          <p className="text-sm sm:text-base text-emerald-200 font-medium break-words">✓ {uploadStatus}</p>
           {/* {keypointsData.length > 0 && (
             <p className="text-emerald-400 text-sm mt-1">
               Loaded {keypointsData.length} frames of skeleton data
@@ -440,9 +440,9 @@ export default function VideoAnalysisTab() {
       )}
 
       {(error || wsError) && (
-        <div className="mb-4 bg-red-900/30 border border-red-700 rounded-lg p-4">
-          <p className="text-red-200 font-medium">Error</p>
-          <p className="text-red-400 text-sm mt-1">{error || wsError}</p>
+        <div className="mb-3 sm:mb-4 bg-red-900/30 border border-red-700 rounded-lg p-3 sm:p-4">
+          <p className="text-sm sm:text-base text-red-200 font-medium">Error</p>
+          <p className="text-red-400 text-xs sm:text-sm mt-1 break-words">{error || wsError}</p>
         </div>
       )}
 
@@ -486,26 +486,26 @@ export default function VideoAnalysisTab() {
       </div> */}
 
       {/* Video Container */}
-      <div className="w-full bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
+      <div className="w-full bg-slate-900 rounded-xl sm:rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
 
         {!videoUrl ? (
           // Upload State
           <div
             onClick={() => !isUploading && fileInputRef.current?.click()}
-            className={`h-96 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 m-4 rounded-xl ${isUploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-emerald-500 hover:bg-slate-800/50'
+            className={`h-64 sm:h-80 md:h-96 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 m-3 sm:m-4 rounded-xl ${isUploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-emerald-500 hover:bg-slate-800/50'
               } transition-all group`}
           >
-            <div className="bg-slate-800 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform">
+            <div className="bg-slate-800 p-3 sm:p-4 rounded-full mb-3 sm:mb-4 group-hover:scale-110 transition-transform">
               {isUploading ? (
-                <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
+                <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-400 animate-spin" />
               ) : (
-                <Upload className="w-8 h-8 text-emerald-400" />
+                <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-400" />
               )}
             </div>
-            <p className="text-white font-medium">
+            <p className="text-sm sm:text-base text-white font-medium px-4 text-center">
               {isUploading ? 'Uploading...' : 'Upload Cricket Video'}
             </p>
-            <p className="text-slate-500 text-sm mt-1">MP4, MOV or AVI (Max 50MB)</p>
+            <p className="text-slate-500 text-xs sm:text-sm mt-1 px-4 text-center">MP4, MOV or AVI (Max 50MB)</p>
             <input
               ref={fileInputRef}
               type="file"
@@ -542,20 +542,20 @@ export default function VideoAnalysisTab() {
             </div>
 
             {/* Controls Bar */}
-            <div className="w-full bg-slate-900/90 backdrop-blur border-t border-slate-800 p-4 flex items-center justify-between">
-              <div className="flex items-center gap-4">
+            <div className="w-full bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
                 <button
                   onClick={togglePlay}
-                  className="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-400 text-white transition-colors"
+                  className="w-10 h-10 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-400 text-white transition-colors flex-shrink-0"
                 >
-                  {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-1" />}
+                  {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-1" />}
                 </button>
 
-                <div className="flex flex-col">
-                  <span className="text-slate-200 text-sm font-medium">
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="text-slate-200 text-xs sm:text-sm font-medium">
                     Skeleton Overlay
                   </span>
-                  <span className="text-slate-500 text-xs font-mono">
+                  <span className="text-slate-500 text-[10px] sm:text-xs font-mono truncate">
                     Frame: {currentFrame} / {keypointsData.length} ({calculatedFPS.toFixed(1)} FPS)
                   </span>
                 </div>
@@ -573,7 +573,7 @@ export default function VideoAnalysisTab() {
                   setIsProcessing(false);
                   setWsEnabled(false);
                 }}
-                className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm"
+                className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs sm:text-sm self-end sm:self-auto"
               >
                 <RefreshCw size={14} />
                 <span>New Video</span>
@@ -583,13 +583,13 @@ export default function VideoAnalysisTab() {
         )}
         {/* Bedrock Analytics Display */}
         {bedrockAnalytics && (
-          <div className="w-full mt-8 space-y-8 p-6 bg-slate-900/50">
-            <div className="flex items-center justify-between mb-6">
+          <div className="w-full mt-6 sm:mt-8 space-y-6 sm:space-y-8 p-4 sm:p-6 bg-slate-900/50">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0 mb-4 sm:mb-6">
               <div className="flex-1">
-                <h2 className="text-3xl font-bold text-white mb-2">
+                <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">
                   Analysis Results
                 </h2>
-                <p className="text-slate-400">AI-powered insights to improve your technique</p>
+                <p className="text-sm sm:text-base text-slate-400">AI-powered insights to improve your technique</p>
               </div>
               <button
                 onClick={async () => {
@@ -601,7 +601,7 @@ export default function VideoAnalysisTab() {
                     }
                   }
                 }}
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-emerald-500/20"
+                className="flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm sm:text-base font-medium transition-all shadow-lg hover:shadow-emerald-500/20 w-full sm:w-auto justify-center"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>Refresh</span>
@@ -609,25 +609,25 @@ export default function VideoAnalysisTab() {
             </div>
 
             {/* Summary Section - Enhanced */}
-            <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-900/20 rounded-2xl border border-emerald-500/30 p-8 shadow-2xl overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl"></div>
-              <div className="relative flex items-center justify-between">
+            <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-900/20 rounded-xl sm:rounded-2xl border border-emerald-500/30 p-5 sm:p-8 shadow-2xl overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 sm:w-64 sm:h-64 bg-emerald-500/5 rounded-full blur-3xl"></div>
+              <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-white mb-3 leading-tight">
+                  <h3 className="text-lg sm:text-2xl font-bold text-white mb-2 sm:mb-3 leading-tight">
                     {bedrockAnalytics.summary?.headline}
                   </h3>
                   <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center px-4 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-sm font-semibold border border-emerald-500/30">
+                    <span className="inline-flex items-center px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs sm:text-sm font-semibold border border-emerald-500/30">
                       {bedrockAnalytics.summary?.skill_level}
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center justify-center w-28 h-28 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-2xl shadow-emerald-500/30 border-4 border-emerald-300/20">
+                <div className="flex items-center justify-center w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-2xl shadow-emerald-500/30 border-4 border-emerald-300/20 self-center sm:self-auto">
                   <div className="text-center">
-                    <div className="text-4xl font-bold text-white">
+                    <div className="text-3xl sm:text-4xl font-bold text-white">
                       {bedrockAnalytics.summary?.overall_score}
                     </div>
-                    <div className="text-xs text-emerald-50 font-medium">/ 10</div>
+                    <div className="text-[10px] sm:text-xs text-emerald-50 font-medium">/ 10</div>
                   </div>
                 </div>
               </div>
@@ -636,30 +636,30 @@ export default function VideoAnalysisTab() {
             {/* Key Observations - Enhanced */}
             {bedrockAnalytics.key_observations && bedrockAnalytics.key_observations.length > 0 && (
               <div>
-                <h3 className="text-2xl font-bold text-white mb-5 flex items-center gap-2">
-                  <TrendingUp className="w-6 h-6 text-emerald-400" />
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
                   Key Observations
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                   {bedrockAnalytics.key_observations.map((obs: any, idx: number) => (
                     <div
                       key={idx}
-                      className="relative bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-xl border border-slate-700 p-6 hover:border-emerald-500/50 transition-all group hover:shadow-xl hover:shadow-emerald-500/10"
+                      className="relative bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-6 hover:border-emerald-500/50 transition-all group hover:shadow-xl hover:shadow-emerald-500/10"
                     >
-                      <div className="flex items-start gap-5">
-                        <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 flex-shrink-0 shadow-lg">
+                      <div className="flex items-start gap-3 sm:gap-5">
+                        <div className="flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 flex-shrink-0 shadow-lg">
                           <div className="text-center">
-                            <div className="text-2xl font-bold text-emerald-400">
+                            <div className="text-xl sm:text-2xl font-bold text-emerald-400">
                               {obs.score}
                             </div>
-                            <div className="text-xs text-emerald-300 font-medium">/10</div>
+                            <div className="text-[10px] sm:text-xs text-emerald-300 font-medium">/10</div>
                           </div>
                         </div>
-                        <div className="flex-1">
-                          <h4 className="text-lg font-bold text-white mb-2 group-hover:text-emerald-400 transition-colors">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2 group-hover:text-emerald-400 transition-colors">
                             {obs.title}
                           </h4>
-                          <p className="text-slate-400 text-sm leading-relaxed">
+                          <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
                             {obs.description}
                           </p>
                         </div>
@@ -673,27 +673,27 @@ export default function VideoAnalysisTab() {
             {/* Improvement Areas - Enhanced */}
             {bedrockAnalytics.improvement_areas && bedrockAnalytics.improvement_areas.length > 0 && (
               <div>
-                <h3 className="text-2xl font-bold text-white mb-5 flex items-center gap-2">
-                  <AlertTriangle className="w-6 h-6 text-yellow-400" />
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
                   Improvement Areas
                 </h3>
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {bedrockAnalytics.improvement_areas.map((area: any, idx: number) => (
                     <div
                       key={idx}
-                      className="bg-gradient-to-r from-slate-800 to-slate-800/50 rounded-xl border border-slate-700 p-5 hover:border-yellow-500/50 transition-all hover:shadow-lg hover:shadow-yellow-500/10"
+                      className="bg-gradient-to-r from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-5 hover:border-yellow-500/50 transition-all hover:shadow-lg hover:shadow-yellow-500/10"
                     >
-                      <div className="flex items-start gap-4">
-                        <div className="mt-1 p-2 rounded-lg bg-yellow-500/10">
-                          <AlertTriangle className="w-6 h-6 text-yellow-400" />
+                      <div className="flex items-start gap-3 sm:gap-4">
+                        <div className="mt-0.5 sm:mt-1 p-1.5 sm:p-2 rounded-lg bg-yellow-500/10 flex-shrink-0">
+                          <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h4 className="text-lg font-bold text-white">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
+                            <h4 className="text-base sm:text-lg font-bold text-white">
                               {area.title}
                             </h4>
                             <span
-                              className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${area.priority === 'high'
+                              className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wide inline-block ${area.priority === 'high'
                                 ? 'bg-red-500/20 text-red-300 border border-red-500/30'
                                 : area.priority === 'medium'
                                   ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
@@ -703,7 +703,7 @@ export default function VideoAnalysisTab() {
                               {area.priority}
                             </span>
                           </div>
-                          <p className="text-slate-400 text-sm leading-relaxed">{area.detail}</p>
+                          <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">{area.detail}</p>
                         </div>
                       </div>
                     </div>
@@ -715,29 +715,29 @@ export default function VideoAnalysisTab() {
             {/* Suggested Drills - Enhanced */}
             {bedrockAnalytics.suggested_drills && bedrockAnalytics.suggested_drills.length > 0 && (
               <div>
-                <h3 className="text-2xl font-bold text-white mb-5 flex items-center gap-2">
-                  <CheckCircle className="w-6 h-6 text-emerald-400" />
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
                   Suggested Drills
                 </h3>
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {bedrockAnalytics.suggested_drills.map((drill: any, idx: number) => (
                     <div
                       key={idx}
-                      className="bg-slate-800/70 rounded-xl border border-slate-700 overflow-hidden hover:border-emerald-500/50 transition-all hover:shadow-lg hover:shadow-emerald-500/10"
+                      className="bg-slate-800/70 rounded-lg sm:rounded-xl border border-slate-700 overflow-hidden hover:border-emerald-500/50 transition-all hover:shadow-lg hover:shadow-emerald-500/10"
                     >
                       <button
                         onClick={() => setExpandedDrill(expandedDrill === idx ? null : idx)}
-                        className="w-full p-5 flex items-center justify-between text-left hover:bg-slate-700/50 transition-colors"
+                        className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-700/50 transition-colors"
                       >
-                        <div className="flex-1">
-                          <h4 className="text-lg font-bold text-white mb-2">
+                        <div className="flex-1 min-w-0 pr-2">
+                          <h4 className="text-base sm:text-lg font-bold text-white mb-1.5 sm:mb-2">
                             {drill.name}
                           </h4>
-                          <span className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold border border-emerald-500/30">
+                          <span className="inline-flex items-center px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] sm:text-xs font-semibold border border-emerald-500/30">
                             {drill.focus_area}
                           </span>
                         </div>
-                        <div className="ml-4">
+                        <div className="ml-2 sm:ml-4 flex-shrink-0">
                           <div
                             className={`transform transition-transform duration-200 ${expandedDrill === idx ? 'rotate-180' : ''}`}
                           >
@@ -758,8 +758,8 @@ export default function VideoAnalysisTab() {
                         </div>
                       </button>
                       {expandedDrill === idx && (
-                        <div className="px-5 pb-5 border-t border-slate-700 bg-slate-900/30">
-                          <p className="text-slate-300 text-sm mt-4 leading-relaxed">
+                        <div className="px-4 sm:px-5 pb-4 sm:pb-5 border-t border-slate-700 bg-slate-900/30">
+                          <p className="text-slate-300 text-xs sm:text-sm mt-3 sm:mt-4 leading-relaxed">
                             {drill.description}
                           </p>
                         </div>
@@ -772,25 +772,25 @@ export default function VideoAnalysisTab() {
 
             {/* Explanation - Enhanced */}
             {bedrockAnalytics.explanation && (
-              <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-xl border border-slate-700 p-6 shadow-lg">
-                <h3 className="text-2xl font-bold text-white mb-5 flex items-center gap-2">
-                  <CheckCircle className="w-6 h-6 text-emerald-400" />
+              <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-6 shadow-lg">
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
                   Detailed Explanation
                 </h3>
-                <div className="space-y-5">
-                  <p className="text-slate-300 leading-relaxed text-base">
+                <div className="space-y-4 sm:space-y-5">
+                  <p className="text-slate-300 leading-relaxed text-sm sm:text-base">
                     {bedrockAnalytics.explanation.long_form}
                   </p>
                   {bedrockAnalytics.explanation.notes && bedrockAnalytics.explanation.notes.length > 0 && (
-                    <div className="mt-6 p-5 bg-emerald-500/5 rounded-lg border border-emerald-500/20">
-                      <h4 className="text-white font-bold mb-4 flex items-center gap-2">
-                        <CheckCircle className="w-5 h-5 text-emerald-400" />
+                    <div className="mt-4 sm:mt-6 p-4 sm:p-5 bg-emerald-500/5 rounded-lg border border-emerald-500/20">
+                      <h4 className="text-sm sm:text-base text-white font-bold mb-3 sm:mb-4 flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
                         Key Focus Points
                       </h4>
-                      <ul className="space-y-3">
+                      <ul className="space-y-2 sm:space-y-3">
                         {bedrockAnalytics.explanation.notes.map((note: string, idx: number) => (
-                          <li key={idx} className="flex items-start gap-3 text-slate-300 text-sm">
-                            <span className="text-emerald-400 text-lg font-bold mt-0.5">•</span>
+                          <li key={idx} className="flex items-start gap-2 sm:gap-3 text-slate-300 text-xs sm:text-sm">
+                            <span className="text-emerald-400 text-base sm:text-lg font-bold mt-0.5 flex-shrink-0">•</span>
                             <span className="leading-relaxed">{note}</span>
                           </li>
                         ))}
