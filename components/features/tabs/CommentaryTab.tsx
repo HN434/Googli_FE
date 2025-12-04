@@ -182,11 +182,11 @@ export default function CommentaryTab() {
   useEffect(() => {
     if (pendingFirstSpeech) {
       if (isVoiceEnabled) {
-        pollyService.speakCommentary(pendingFirstSpeech.text, commentaryLanguage, commentaryVoice);
+        pollyService.speakCommentary(pendingFirstSpeech.text, commentaryLanguage, commentaryVoice, commentaryTone);
       }
       setPendingFirstSpeech(null);
     }
-  }, [pendingFirstSpeech, isVoiceEnabled, commentaryLanguage, commentaryVoice]);
+  }, [pendingFirstSpeech, isVoiceEnabled, commentaryLanguage, commentaryVoice, commentaryTone]);
 
   // Initialize API key from environment variable and load matches
   useEffect(() => {
@@ -235,7 +235,7 @@ export default function CommentaryTab() {
 
           // Voice Commentary for the single entry being displayed
           if (isVoiceEnabled) {
-            pollyService.speakCommentary(nextEntry.text, commentaryLanguage, commentaryVoice);
+            pollyService.speakCommentary(nextEntry.text, commentaryLanguage, commentaryVoice, commentaryTone);
           }
         }
       }
@@ -243,7 +243,7 @@ export default function CommentaryTab() {
 
     const intervalId = setInterval(processQueue, 6000); // 6 second delay between balls
     return () => clearInterval(intervalId);
-  }, [isVoiceEnabled, commentaryLanguage, commentaryVoice]);
+  }, [isVoiceEnabled, commentaryLanguage, commentaryVoice, commentaryTone]);
 
   // Helper function to map language names to language codes
   const getLanguageCode = (language: string): string => {
@@ -738,7 +738,7 @@ export default function CommentaryTab() {
               </div>
               <button
                 className="px-3 py-1.5 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 hover:bg-emerald-500/30 transition-all text-xs font-semibold"
-                onClick={() => pollyService.speakCommentary('This is a test of the voice commentary system. Welcome to Googli AI!', commentaryLanguage, commentaryVoice)}
+                onClick={() => pollyService.speakCommentary('This is a test of the voice commentary system. Welcome to Googli AI!', commentaryLanguage, commentaryVoice, commentaryTone)}
                 title="Test voice output"
               >
                 Test Voice

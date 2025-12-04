@@ -35,6 +35,7 @@ interface QueueItem {
     text: string;
     language: string;
     gender: string;
+    tone: string;
 }
 
 interface Commentary {
@@ -168,8 +169,8 @@ class PollyService {
         const voiceMap: Record<string, string> = {
             'English-Male': 'Matthew',
             'English-Female': 'Joanna',
-            'Hindi-Male': 'Aditi', // Aditi supports both standard (no male Hindi voice available)
-            'Hindi-Female': 'Aditi',
+            'Hindi-Male': 'Raveena', // Aditi supports both standard (no male Hindi voice available)
+            'Hindi-Female': 'Kajal',
             'Tamil-Male': 'Raveena', // Using Indian English voice (no native Tamil voice)
             'Tamil-Female': 'Raveena',
             'Telugu-Male': 'Raveena', // Using Indian English voice (no native Telugu voice)
@@ -186,12 +187,37 @@ class PollyService {
     }
 
     /**
+     * Generate SSML with prosody tags for tone control in AWS Polly
+     */
+    private getToneSSML(text: string, tone: string = 'Professional'): string {
+        // Escape special XML characters
+        const escapedText = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+
+        const toneSettings: Record<string, { rate: string; pitch: string; volume: string }> = {
+            'Calm': { rate: 'slow', pitch: 'low', volume: 'medium' },
+            'Exciting': { rate: 'fast', pitch: 'high', volume: 'loud' },
+            'Professional': { rate: 'medium', pitch: 'medium', volume: 'medium' },
+            'Dramatic': { rate: 'medium', pitch: 'high', volume: 'loud' }
+        };
+
+        const settings = toneSettings[tone] || toneSettings['Professional'];
+
+        return `<speak><prosody rate="${settings.rate}" pitch="${settings.pitch}" volume="${settings.volume}">${escapedText}</prosody></speak>`;
+    }
+
+    /**
      * Convert text to speech using AWS Polly
      */
     async speakWithPolly(
         text: string,
         language: string = 'English',
-        gender: string = 'Male'
+        gender: string = 'Male',
+        tone: string = 'Professional'
     ): Promise<void> {
         console.log('[Polly] speakWithPolly called');
         console.log('[Polly] Initialized:', this.initialized);
@@ -209,33 +235,35 @@ class PollyService {
             console.log('[Polly] ✅ AWS Polly is initialized, using AWS Polly');
             console.log('[Polly] AWS Polly speaking:', text.substring(0, 50), 'Language:', language);
 
-            // Translate text if not English using AWS Translate
-            if (language !== 'English') {
-                const originalText = text;
-                text = await this.translateText(text, language);
-                console.log('[Polly] AWS Translated from:', originalText.substring(0, 30));
-                console.log('[Polly] AWS Translated to:', text.substring(0, 30));
-            }
+            // Text is already translated from backend, no need to translate again
+            console.log('[Polly] Using text as-is (already translated by backend)');
 
             const voiceId = this.getVoiceId(language, gender);
-            console.log('[Polly] Using AWS Polly voice:', voiceId);
+            console.log('[Polly] Using AWS Polly voice:', voiceId, 'with tone:', tone);
+
+            // Generate SSML with tone-based prosody
+            const ssmlText = this.getToneSSML(text, tone);
+            console.log('[Polly] Generated SSML:', ssmlText.substring(0, 100));
 
             // Try with neural engine first, fall back to standard if not supported
             let params: PollyParams = {
-                Text: text,
+                Text: ssmlText,
                 OutputFormat: 'mp3',
                 VoiceId: voiceId,
                 Engine: 'neural', // Use neural engine for better quality
-                TextType: 'text',
+                TextType: 'ssml', // Changed from 'text' to 'ssml'
             };
 
             let data: PollyResponse;
             try {
                 data = await this.polly.synthesizeSpeech(params).promise();
             } catch (neuralError: any) {
-                if (neuralError.message && neuralError.message.includes('does not support')) {
-                    // Retry with standard engine
-                    console.log('[Polly] Neural engine not supported for this voice, using standard engine');
+                // Neural engine doesn't support SSML prosody tags, fall back to standard engine
+                if (neuralError.message && (
+                    neuralError.message.includes('does not support') ||
+                    neuralError.message.includes('Unsupported Neural feature')
+                )) {
+                    console.log('[Polly] Neural engine does not support SSML prosody, falling back to standard engine');
                     params.Engine = 'standard';
                     data = await this.polly.synthesizeSpeech(params).promise();
                 } else {
@@ -339,22 +367,17 @@ class PollyService {
     /**
      * Convert text to speech using browser's Web Speech API (fallback)
      */
-    async speakWithBrowser(text: string, language: string = 'English'): Promise<void> {
+    async speakWithBrowser(text: string, language: string = 'English', tone: string = 'Professional'): Promise<void> {
         if (typeof window === 'undefined' || !window.speechSynthesis) {
             console.error('[Polly] Browser speech synthesis not supported');
             throw new Error('Browser speech synthesis not supported');
         }
 
         try {
-            console.log('[Polly] Using browser speech for:', text.substring(0, 50), 'Language:', language);
+            console.log('[Polly] Using browser speech for:', text.substring(0, 50), 'Language:', language, 'Tone:', tone);
 
-            // Translate if not English (AWS Translate will be used if available, otherwise romanization)
-            if (language !== 'English') {
-                const originalText = text;
-                text = await this.translateText(text, language);
-                console.log('[Polly] Translated from:', originalText.substring(0, 30));
-                console.log('[Polly] Translated to:', text.substring(0, 30));
-            }
+            // Text is already translated from backend, no need to translate again
+            console.log('[Polly] Using text as-is (already translated by backend)');
 
             // Cancel any ongoing speech
             window.speechSynthesis.cancel();
@@ -407,10 +430,20 @@ class PollyService {
                     console.warn('[Polly] No voices available, using browser default');
                 }
 
-                // Set voice parameters - maximize volume
-                utterance.rate = 1.0;
-                utterance.pitch = 1.0;
-                utterance.volume = 1.0; // Max volume
+                // Set voice parameters based on tone
+                const toneSettings: Record<string, { rate: number; pitch: number; volume: number }> = {
+                    'Calm': { rate: 0.8, pitch: 0.9, volume: 0.8 },
+                    'Exciting': { rate: 1.3, pitch: 1.2, volume: 1.0 },
+                    'Professional': { rate: 1.0, pitch: 1.0, volume: 0.9 },
+                    'Dramatic': { rate: 1.1, pitch: 1.15, volume: 1.0 }
+                };
+
+                const settings = toneSettings[tone] || toneSettings['Professional'];
+                utterance.rate = settings.rate;
+                utterance.pitch = settings.pitch;
+                utterance.volume = settings.volume;
+
+                console.log('[Polly] Tone settings applied:', tone, settings);
 
                 utterance.onstart = () => {
                     console.log('[Polly] Browser speech started');
@@ -494,8 +527,8 @@ class PollyService {
     /**
      * Add commentary to speech queue
      */
-    queueCommentary(text: string, language: string = 'English', gender: string = 'Male'): void {
-        this.queue.push({ text, language, gender });
+    queueCommentary(text: string, language: string = 'English', gender: string = 'Male', tone: string = 'Professional'): void {
+        this.queue.push({ text, language, gender, tone });
 
         if (!this.isPlaying) {
             this.processQueue();
@@ -517,9 +550,9 @@ class PollyService {
         if (item) {
             try {
                 if (this.polly) {
-                    await this.speakWithPolly(item.text, item.language, item.gender);
+                    await this.speakWithPolly(item.text, item.language, item.gender, item.tone);
                 } else {
-                    await this.speakWithBrowser(item.text, item.language);
+                    await this.speakWithBrowser(item.text, item.language, item.tone);
                 }
             } catch (error) {
                 console.error('Error processing speech queue:', error);
@@ -596,6 +629,7 @@ class PollyService {
         commentary: string | Commentary,
         language: string = 'English',
         gender: string = 'Male',
+        tone: string = 'Professional',
         onComplete?: () => void
     ): Promise<void> {
         let text = typeof commentary === 'string' ? commentary : commentary.text || '';
@@ -617,9 +651,9 @@ class PollyService {
         if (onComplete) {
             try {
                 if (this.polly) {
-                    await this.speakWithPolly(text, language, gender);
+                    await this.speakWithPolly(text, language, gender, tone);
                 } else {
-                    await this.speakWithBrowser(text, language);
+                    await this.speakWithBrowser(text, language, tone);
                 }
                 onComplete();
             } catch (error) {
@@ -628,7 +662,7 @@ class PollyService {
             }
         } else {
             // Queue the commentary (old behavior)
-            this.queueCommentary(text, language, gender);
+            this.queueCommentary(text, language, gender, tone);
         }
     }
 
