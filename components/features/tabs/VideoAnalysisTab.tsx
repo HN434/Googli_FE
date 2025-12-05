@@ -10,6 +10,7 @@ import {
   getKeypointColor,
   type PoseFrame
 } from "@/utils/poseUtils";
+import { scaleBatDetections, drawBatDetection } from "@/utils/batUtils";
 import { useVideoWebSocket } from "@/hooks/useVideoWebSocket";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BE_URL || "http://localhost:8000/api";
@@ -369,6 +370,21 @@ export default function VideoAnalysisTab() {
               ctx.stroke();
             }
           });
+
+          // Draw Bat Detections (if available)
+          if (frameData.bats && frameData.bats.length > 0) {
+            const scaledBats = scaleBatDetections(
+              frameData.bats,
+              video.videoWidth,
+              video.videoHeight,
+              canvas.width,
+              canvas.height
+            );
+
+            scaledBats.forEach(bat => {
+              drawBatDetection(ctx, bat, true);
+            });
+          }
         }
       }
     }

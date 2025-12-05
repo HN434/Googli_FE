@@ -1,11 +1,26 @@
 export type Keypoint = { x: number; y: number; score: number };
 
+export type BatDetection = {
+    bbox: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    };
+    confidence: number;
+    bat_angle: number;
+    bat_center: [number, number];
+    bat_id: number;
+};
+
 export type PoseFrame = {
     frame_number: number;
     persons: Array<{
         keypoints: number[][];
         scores: number[];
     }>;
+    bats?: BatDetection[]; // Optional bat detection data
+    num_bats?: number;
 };
 
 // 1. Define Colors
