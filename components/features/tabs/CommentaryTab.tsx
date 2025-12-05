@@ -155,7 +155,7 @@ export default function CommentaryTab() {
   const [matchesError, setMatchesError] = useState<string | null>(null);
 
   const [commentaryLanguage, setCommentaryLanguage] = useState('English');
-  const [commentaryTone, setCommentaryTone] = useState('Exciting');
+  const [commentaryTone, setCommentaryTone] = useState('Professional');
   const [commentaryVoice, setCommentaryVoice] = useState('Male');
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isAutoRefreshEnabled, setIsAutoRefreshEnabled] = useState(true);

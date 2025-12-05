@@ -164,17 +164,27 @@ class PollyService {
 
     /**
      * Get available voices based on language and gender
+     * Updated for English, Spanish, and Hindi
      */
     getVoiceId(language: string = 'English', gender: string = 'Male'): string {
         const voiceMap: Record<string, string> = {
+            // English voices
             'English-Male': 'Matthew',
             'English-Female': 'Joanna',
-            'Hindi-Male': 'Raveena', // Aditi supports both standard (no male Hindi voice available)
-            'Hindi-Female': 'Kajal',
-            'Tamil-Male': 'Raveena', // Using Indian English voice (no native Tamil voice)
-            'Tamil-Female': 'Raveena',
-            'Telugu-Male': 'Raveena', // Using Indian English voice (no native Telugu voice)
-            'Telugu-Female': 'Raveena',
+
+            // Spanish voices
+            'Spanish-Male': 'Miguel',      // Standard engine, Spanish (US)
+            'Spanish-Female': 'Lupe',      // Standard engine, Spanish (US)
+
+            // Hindi voices
+            'Hindi-Male': 'Aditi',         // Standard engine (supports both genders)
+            'Hindi-Female': 'Kajal',       // Neural engine
+
+            // Fallback for Tamil/Telugu if needed
+            'Tamil-Male': 'Aditi',
+            'Tamil-Female': 'Aditi',
+            'Telugu-Male': 'Aditi',
+            'Telugu-Female': 'Aditi',
         };
 
         const key = `${language}-${gender}`;
@@ -187,7 +197,21 @@ class PollyService {
     }
 
     /**
-     * Generate SSML with prosody tags for tone control in AWS Polly
+     * Check if voice supports Neural engine
+     */
+    private supportsNeuralEngine(voiceId: string): boolean {
+        // Neural-compatible voices
+        const neuralVoices = [
+            'Matthew', 'Joanna',  // English
+            'Kajal'                // Hindi (female only)
+        ];
+
+        return neuralVoices.includes(voiceId);
+    }
+
+    /**
+     * Generate SSML with prosody tags for tone control
+     * NOTE: Only works with Standard engine, not Neural
      */
     private getToneSSML(text: string, tone: string = 'Professional'): string {
         // Escape special XML characters
@@ -198,16 +222,17 @@ class PollyService {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&apos;');
 
-        const toneSettings: Record<string, { rate: string; pitch: string; volume: string }> = {
-            'Calm': { rate: 'slow', pitch: 'low', volume: 'medium' },
-            'Exciting': { rate: 'fast', pitch: 'high', volume: 'loud' },
-            'Professional': { rate: 'medium', pitch: 'medium', volume: 'medium' },
-            'Dramatic': { rate: 'medium', pitch: 'high', volume: 'loud' }
+        // Standard engine supports percentage values for rate/pitch
+        const toneSettings: Record<string, { rate: string; pitch: string }> = {
+            'Calm': { rate: '85%', pitch: '-5%' },
+            'Exciting': { rate: '120%', pitch: '+10%' },
+            'Professional': { rate: '100%', pitch: '+0%' },
+            'Dramatic': { rate: '105%', pitch: '+15%' }
         };
 
         const settings = toneSettings[tone] || toneSettings['Professional'];
 
-        return `<speak><prosody rate="${settings.rate}" pitch="${settings.pitch}" volume="${settings.volume}">${escapedText}</prosody></speak>`;
+        return `<speak><prosody rate="${settings.rate}" pitch="${settings.pitch}">${escapedText}</prosody></speak>`;
     }
 
     /**
@@ -235,41 +260,44 @@ class PollyService {
             console.log('[Polly] ✅ AWS Polly is initialized, using AWS Polly');
             console.log('[Polly] AWS Polly speaking:', text.substring(0, 50), 'Language:', language);
 
-            // Text is already translated from backend, no need to translate again
-            console.log('[Polly] Using text as-is (already translated by backend)');
-
             const voiceId = this.getVoiceId(language, gender);
             console.log('[Polly] Using AWS Polly voice:', voiceId, 'with tone:', tone);
 
-            // Generate SSML with tone-based prosody
-            const ssmlText = this.getToneSSML(text, tone);
-            console.log('[Polly] Generated SSML:', ssmlText.substring(0, 100));
+            // Determine which engine to use based on voice and tone requirements
+            const useNeuralEngine = this.supportsNeuralEngine(voiceId) && tone === 'Professional';
+            const engine = useNeuralEngine ? 'neural' : 'standard';
 
-            // Try with neural engine first, fall back to standard if not supported
-            let params: PollyParams = {
-                Text: ssmlText,
-                OutputFormat: 'mp3',
-                VoiceId: voiceId,
-                Engine: 'neural', // Use neural engine for better quality
-                TextType: 'ssml', // Changed from 'text' to 'ssml'
-            };
+            console.log('[Polly] Using engine:', engine);
 
-            let data: PollyResponse;
-            try {
-                data = await this.polly.synthesizeSpeech(params).promise();
-            } catch (neuralError: any) {
-                // Neural engine doesn't support SSML prosody tags, fall back to standard engine
-                if (neuralError.message && (
-                    neuralError.message.includes('does not support') ||
-                    neuralError.message.includes('Unsupported Neural feature')
-                )) {
-                    console.log('[Polly] Neural engine does not support SSML prosody, falling back to standard engine');
-                    params.Engine = 'standard';
-                    data = await this.polly.synthesizeSpeech(params).promise();
-                } else {
-                    throw neuralError;
-                }
+            let params: PollyParams;
+
+            // Neural engine: Use plain text (no SSML prosody support)
+            // Standard engine: Use SSML with prosody for tone control
+            if (engine === 'neural') {
+                params = {
+                    Text: text,
+                    OutputFormat: 'mp3',
+                    VoiceId: voiceId,
+                    Engine: 'neural',
+                    TextType: 'text',
+                };
+                console.log('[Polly] Using Neural engine with plain text');
+            } else {
+                // Generate SSML with tone-based prosody for standard engine
+                const ssmlText = this.getToneSSML(text, tone);
+                console.log('[Polly] Generated SSML:', ssmlText.substring(0, 100));
+
+                params = {
+                    Text: ssmlText,
+                    OutputFormat: 'mp3',
+                    VoiceId: voiceId,
+                    Engine: 'standard',
+                    TextType: 'ssml',
+                };
+                console.log('[Polly] Using Standard engine with SSML prosody');
             }
+
+            const data: PollyResponse = await this.polly.synthesizeSpeech(params).promise();
 
             // Create audio from the response
             const audioBlob = new Blob([data.AudioStream], { type: 'audio/mpeg' });
@@ -311,6 +339,7 @@ class PollyService {
 
                 const languageCodeMap: Record<string, string> = {
                     Hindi: 'hi',
+                    Spanish: 'es',
                     Tamil: 'ta',
                     Telugu: 'te',
                 };
@@ -342,8 +371,7 @@ class PollyService {
             '[Polly] AWS Translate not configured. For full translation, add translate:TranslateText permission to your IAM policy.'
         );
 
-        // For Hindi/Tamil/Telugu browser speech, keep English text but make it more natural
-        // Browser will use Hindi/Tamil/Telugu voice to read English text with native accent
+        // For Hindi/Spanish browser speech, keep English text with phonetic adjustments
         if (targetLanguage === 'Hindi') {
             // Replace cricket terms with phonetic Hindi for better pronunciation
             text = text.replace(/\bfour runs\b/gi, 'chaar runs');
@@ -352,12 +380,6 @@ class PollyService {
             text = text.replace(/\bsix\b/gi, 'chhakka');
             text = text.replace(/\bout\b/gi, 'out');
             text = text.replace(/\bwicket\b/gi, 'wicket');
-            text = text.replace(/\bbowled\b/gi, 'bowled');
-            text = text.replace(/\bcaught\b/gi, 'catch out');
-            text = text.replace(/\bdelivery\b/gi, 'ball');
-            text = text.replace(/\bover\b/gi, 'over');
-            text = text.replace(/\bruns\b/gi, 'runs');
-            text = text.replace(/\bdot ball\b/gi, 'dot ball');
         }
 
         console.log('[Polly] Romanization result (English text will be spoken with native accent)');
@@ -376,9 +398,6 @@ class PollyService {
         try {
             console.log('[Polly] Using browser speech for:', text.substring(0, 50), 'Language:', language, 'Tone:', tone);
 
-            // Text is already translated from backend, no need to translate again
-            console.log('[Polly] Using text as-is (already translated by backend)');
-
             // Cancel any ongoing speech
             window.speechSynthesis.cancel();
 
@@ -390,6 +409,7 @@ class PollyService {
             // Set language
             const langMap: Record<string, string> = {
                 English: 'en-US',
+                Spanish: 'es-ES',
                 Hindi: 'hi-IN',
                 Tamil: 'ta-IN',
                 Telugu: 'te-IN',
@@ -432,10 +452,10 @@ class PollyService {
 
                 // Set voice parameters based on tone
                 const toneSettings: Record<string, { rate: number; pitch: number; volume: number }> = {
-                    'Calm': { rate: 0.8, pitch: 0.9, volume: 0.8 },
-                    'Exciting': { rate: 1.3, pitch: 1.2, volume: 1.0 },
+                    'Calm': { rate: 0.85, pitch: 0.95, volume: 0.8 },
+                    'Exciting': { rate: 1.2, pitch: 1.1, volume: 1.0 },
                     'Professional': { rate: 1.0, pitch: 1.0, volume: 0.9 },
-                    'Dramatic': { rate: 1.1, pitch: 1.15, volume: 1.0 }
+                    'Dramatic': { rate: 1.05, pitch: 1.15, volume: 1.0 }
                 };
 
                 const settings = toneSettings[tone] || toneSettings['Professional'];
@@ -585,13 +605,13 @@ class PollyService {
 
     /**
      * Clean and format text for better speech output
-     * IMPORTANT: Preserve Unicode characters for Hindi/Tamil/Telugu
+     * IMPORTANT: Preserve Unicode characters for Hindi/Spanish
      */
     formatTextForSpeech(text: string): string {
         // Convert to string if not already
         text = String(text || '');
 
-        // Remove only emojis (but keep Hindi/Tamil/Telugu/Devanagari text)
+        // Remove only emojis (but keep Hindi/Spanish/Devanagari text)
         text = text.replace(/[\u{1F000}-\u{1F9FF}]/gu, ''); // Emoticons
         text = text.replace(/[\u{2600}-\u{27BF}]/gu, ''); // Misc symbols (but not Devanagari)
         text = text.replace(/[\u{1F300}-\u{1F5FF}]/gu, ''); // Misc symbols & pictographs
@@ -603,8 +623,7 @@ class PollyService {
 
         // IMPORTANT: DO NOT remove non-ASCII characters!
         // Hindi (Devanagari): U+0900–U+097F
-        // Tamil: U+0B80–U+0BFF
-        // Telugu: U+0C00–U+0C7F
+        // Spanish: Standard Latin characters with accents
         // We want to KEEP these characters for proper speech synthesis!
 
         // Only remove specific special formatting characters that cause speech issues
