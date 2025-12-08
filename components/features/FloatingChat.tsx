@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { History } from 'lucide-react';
-import bedrockService from '@/services/bedrockService';
+import chatApiService from '@/services/chatApiService';
 import pollyService from '@/services/pollyService';
 import transcribeService from '@/services/transcribeService';
 
@@ -30,6 +30,7 @@ interface Message {
     type: 'user' | 'assistant' | 'error';
     text: string;
     timestamp: number;
+    images?: FileData[]; // Attached images
 }
 
 interface FileData {
@@ -82,7 +83,7 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Initialize AWS services
+    // Initialize Polly service for voice output
     useEffect(() => {
         const initServices = async () => {
             const accessKeyId = process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID;
@@ -91,10 +92,9 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
 
             if (accessKeyId && secretAccessKey) {
                 try {
-                    await bedrockService.initialize(accessKeyId, secretAccessKey, region);
                     await pollyService.initialize(accessKeyId, secretAccessKey, region);
                 } catch (err) {
-                    console.error('Failed to initialize AWS services:', err);
+                    console.error('Failed to initialize Polly service:', err);
                 }
             }
         };
@@ -113,45 +113,74 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
             id: Date.now().toString(),
             type: 'user',
             text: inputValue.trim() || 'Analyze the uploaded file(s)',
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            images: uploadedFiles.length > 0 ? [...uploadedFiles] : undefined
         };
 
         const newMessages = [...messages, userMessage];
         setMessages(newMessages);
         setInputValue('');
+        setUploadedFiles([]); // Clear uploaded files immediately
         setIsLoading(true);
 
+        // Create a placeholder bot message for streaming
+        const botMessageId = (Date.now() + 1).toString();
+        const botMessage: Message = {
+            id: botMessageId,
+            type: 'assistant',
+            text: '',
+            timestamp: Date.now()
+        };
+
+        // Add the bot message to the UI
+        setMessages([...newMessages, botMessage]);
+
         try {
-            let messageContext = userMessage.text;
-            if (uploadedFiles.length > 0) {
-                messageContext += '\n\n[Attached files: ' + uploadedFiles.map(f => f.name).join(', ') + ']';
-            }
+            let streamedText = '';
 
-            const response = await bedrockService.getCricketAdvice(messageContext, uploadedFiles);
+            // Call the backend API with streaming
+            const response = await chatApiService.sendMessage(
+                userMessage.text,
+                uploadedFiles,
+                messages,
+                (chunk: string) => {
+                    // Update message incrementally as chunks arrive
+                    streamedText += chunk;
+                    setMessages(prevMessages =>
+                        prevMessages.map(msg =>
+                            msg.id === botMessageId
+                                ? { ...msg, text: streamedText }
+                                : msg
+                        )
+                    );
+                }
+            );
 
-            const botMessage: Message = {
-                id: (Date.now() + 1).toString(),
-                type: 'assistant',
-                text: response.message,
-                timestamp: Date.now()
-            };
-
-            setMessages([...newMessages, botMessage]);
-            setUploadedFiles([]);
+            // Ensure final message is set (in case streaming missed anything)
+            setMessages(prevMessages =>
+                prevMessages.map(msg =>
+                    msg.id === botMessageId
+                        ? { ...msg, text: response.message }
+                        : msg
+                )
+            );
 
             // Speak response if voice is enabled
-            if (voiceSettings.enabled) {
+            if (voiceSettings.enabled && response.message) {
                 await pollyService.speakCommentary(response.message, voiceSettings.language, voiceSettings.gender);
             }
         } catch (err: any) {
             const errorMessage: Message = {
-                id: (Date.now() + 1).toString(),
+                id: (Date.now() + 2).toString(),
                 type: 'error',
                 text: `Sorry, I encountered an error: ${err.message}. Please try again.`,
                 timestamp: Date.now()
             };
 
-            setMessages([...newMessages, errorMessage]);
+            // Replace the bot message with error message
+            setMessages(prevMessages =>
+                prevMessages.filter(msg => msg.id !== botMessageId).concat(errorMessage)
+            );
         } finally {
             setIsLoading(false);
         }
@@ -167,8 +196,8 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
             for (const file of files) {
                 const fileType = file.type.split('/')[0];
 
-                if (!['image', 'audio'].includes(fileType)) {
-                    throw new Error(`Unsupported file type: ${file.type}`);
+                if (fileType !== 'image') {
+                    throw new Error(`Only image files are supported. Please upload an image.`);
                 }
 
                 if (file.size > 10 * 1024 * 1024) {
@@ -304,13 +333,13 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
             {showHistoryDrawer && (
                 <>
                     {/* Overlay */}
-                    <div 
+                    <div
                         className="absolute inset-0 bg-black/50 backdrop-blur-sm z-40 transition-opacity"
                         onClick={() => setShowHistoryDrawer(false)}
                     />
-                    
+
                     {/* Drawer */}
-                    <div 
+                    <div
                         className="absolute left-0 top-0 bottom-0 w-[50%] bg-slate-900 border-r border-slate-700/50 z-50 flex flex-col shadow-2xl transition-transform duration-300 ease-out"
                         style={{ animation: 'slideInLeft 0.3s ease-out' }}
                     >
@@ -355,11 +384,10 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                                 chatHistory.map(chat => (
                                     <div
                                         key={chat.id}
-                                        className={`group relative p-3 rounded-lg border transition-all cursor-pointer ${
-                                            currentChatId === chat.id
-                                                ? 'bg-emerald-500/10 border-emerald-500/50'
-                                                : 'bg-slate-800/50 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600'
-                                        }`}
+                                        className={`group relative p-3 rounded-lg border transition-all cursor-pointer ${currentChatId === chat.id
+                                            ? 'bg-emerald-500/10 border-emerald-500/50'
+                                            : 'bg-slate-800/50 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600'
+                                            }`}
                                         onClick={() => loadChat(chat.id)}
                                     >
                                         <div className="flex items-start justify-between gap-2">
@@ -410,14 +438,35 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                             <p className="text-xs text-slate-400">Ask me anything!</p>
                         </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-1">
-                        <button
+                        {/* History button - temporarily hidden */}
+                        {/* <button
                             onClick={() => setShowHistoryDrawer(!showHistoryDrawer)}
                             className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
                             title="Chat History"
                         >
                             <History className="w-5 h-5 text-slate-300 hover:text-emerald-400 transition-colors" />
+                        </button> */}
+
+                        <button
+                            onClick={startNewChat}
+                            className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+                            title="Restart Chat"
+                        >
+                            <svg
+                                className="w-5 h-5 text-slate-300 hover:text-emerald-400 transition-colors"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                />
+                            </svg>
                         </button>
 
                         <button
@@ -425,27 +474,27 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                             className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
                             title="Settings"
                         >
-                            <svg 
-                                className="w-5 h-5 text-slate-300 hover:text-emerald-400 transition-colors" 
-                                fill="none" 
-                                stroke="currentColor" 
+                            <svg
+                                className="w-5 h-5 text-slate-300 hover:text-emerald-400 transition-colors"
+                                fill="none"
+                                stroke="currentColor"
                                 viewBox="0 0 24 24"
                             >
-                                <path 
-                                    strokeLinecap="round" 
-                                    strokeLinejoin="round" 
-                                    strokeWidth={2} 
-                                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" 
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
                                 />
-                                <path 
-                                    strokeLinecap="round" 
-                                    strokeLinejoin="round" 
-                                    strokeWidth={2} 
-                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" 
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
                                 />
                             </svg>
                         </button>
-                        
+
                         {onToggleFullscreen && (
                             <button
                                 onClick={onToggleFullscreen}
@@ -453,37 +502,37 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                                 title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
                             >
                                 {isFullscreen ? (
-                                    <svg 
-                                        className="w-5 h-5 text-slate-300 hover:text-emerald-400 transition-colors" 
-                                        fill="none" 
-                                        stroke="currentColor" 
+                                    <svg
+                                        className="w-5 h-5 text-slate-300 hover:text-emerald-400 transition-colors"
+                                        fill="none"
+                                        stroke="currentColor"
                                         viewBox="0 0 24 24"
                                     >
-                                        <path 
-                                            strokeLinecap="round" 
-                                            strokeLinejoin="round" 
-                                            strokeWidth={2} 
-                                            d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M15 9h4.5M15 9V4.5M15 9l5.25-5.25M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" 
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M15 9h4.5M15 9V4.5M15 9l5.25-5.25M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
                                         />
                                     </svg>
                                 ) : (
-                                    <svg 
-                                        className="w-5 h-5 text-slate-300 hover:text-emerald-400 transition-colors" 
-                                        fill="none" 
-                                        stroke="currentColor" 
+                                    <svg
+                                        className="w-5 h-5 text-slate-300 hover:text-emerald-400 transition-colors"
+                                        fill="none"
+                                        stroke="currentColor"
                                         viewBox="0 0 24 24"
                                     >
-                                        <path 
-                                            strokeLinecap="round" 
-                                            strokeLinejoin="round" 
-                                            strokeWidth={2} 
-                                            d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" 
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
                                         />
                                     </svg>
                                 )}
                             </button>
                         )}
-                        
+
                         {onClose && (
                             <button
                                 onClick={onClose}
@@ -588,20 +637,38 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                         key={msg.id}
                         className={`flex gap-2 ${msg.type === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
                     >
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm ${
-                            msg.type === 'user' ? 'bg-emerald-500' : 'bg-slate-700'
-                        }`}>
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm ${msg.type === 'user' ? 'bg-emerald-500' : 'bg-slate-700'
+                            }`}>
                             {msg.type === 'user' ? '👤' : '🏏'}
                         </div>
 
                         <div className={`flex-1 max-w-[75%]`}>
-                            <div className={`px-3 py-2 rounded-2xl text-sm ${
-                                msg.type === 'user'
-                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
-                                    : msg.type === 'error'
-                                        ? 'bg-red-500/20 border border-red-500/50 text-red-200'
-                                        : 'bg-slate-800/80 text-slate-100'
-                            }`}>
+                            <div className={`px-3 py-2 rounded-2xl text-sm ${msg.type === 'user'
+                                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
+                                : msg.type === 'error'
+                                    ? 'bg-red-500/20 border border-red-500/50 text-red-200'
+                                    : 'bg-slate-800/80 text-slate-100'
+                                }`}>
+                                {/* Display attached images */}
+                                {msg.images && msg.images.length > 0 && (
+                                    <div className="flex gap-2 flex-wrap mb-2">
+                                        {msg.images.map((file, idx) => (
+                                            <div key={idx} className="relative">
+                                                {file.fileType === 'image' ? (
+                                                    <img
+                                                        src={`data:${file.type};base64,${file.data}`}
+                                                        alt={file.name}
+                                                        className="w-32 h-32 object-cover rounded-lg border border-slate-600"
+                                                    />
+                                                ) : (
+                                                    <div className="w-32 h-32 bg-slate-700 rounded-lg border border-slate-600 flex items-center justify-center">
+                                                        <span className="text-2xl">🎵</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                                 <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                             </div>
                             <span className="text-xs text-slate-500 px-2 mt-1 block">
@@ -636,7 +703,7 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                         type="file"
                         ref={fileInputRef}
                         onChange={handleFileUpload}
-                        accept="image/*,audio/*"
+                        accept="image/*"
                         multiple
                         className="hidden"
                     />
@@ -645,7 +712,7 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isLoading || isProcessingFile}
                         className="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0 mb-0.5"
-                        title="Upload file"
+                        title="Upload image"
                     >
                         <svg className="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
@@ -707,11 +774,10 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                                 <button
                                     onClick={handleVoiceRecording}
                                     disabled={isLoading || isRecording}
-                                    className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
-                                        isRecording
-                                            ? 'bg-red-500 animate-pulse'
-                                            : 'bg-slate-700 hover:bg-slate-600'
-                                    } disabled:opacity-50`}
+                                    className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${isRecording
+                                        ? 'bg-red-500 animate-pulse'
+                                        : 'bg-slate-700 hover:bg-slate-600'
+                                        } disabled:opacity-50`}
                                     title={isRecording ? 'Recording...' : 'Voice input'}
                                 >
                                     <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
