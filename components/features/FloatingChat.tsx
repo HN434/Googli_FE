@@ -6,6 +6,11 @@ import chatApiService from '@/services/chatApiService';
 import pollyService from '@/services/pollyService';
 import transcribeService from '@/services/transcribeService';
 
+// Generate a unique session ID for tracking conversation context
+const generateSessionId = () => {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+};
+
 // Add keyframe animation for drawer
 if (typeof document !== 'undefined') {
     const style = document.createElement('style');
@@ -79,6 +84,7 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
         gender: 'Female',
         persona: 'Normal'
     });
+    const [sessionId, setSessionId] = useState<string>(generateSessionId());
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -153,7 +159,8 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                                 : msg
                         )
                     );
-                }
+                },
+                sessionId
             );
 
             // Ensure final message is set (in case streaming missed anything)
@@ -307,6 +314,8 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
         setUploadedFiles([]);
         setInputValue('');
         setShowHistoryDrawer(false);
+        // Generate a new session ID for the new chat
+        setSessionId(generateSessionId());
     };
 
     const deleteChat = (chatId: string) => {
@@ -632,51 +641,59 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                     </div>
                 )}
 
-                {messages.map(msg => (
-                    <div
-                        key={msg.id}
-                        className={`flex gap-2 ${msg.type === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-                    >
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm ${msg.type === 'user' ? 'bg-emerald-500' : 'bg-slate-700'
-                            }`}>
-                            {msg.type === 'user' ? '👤' : '🏏'}
-                        </div>
-
-                        <div className={`flex-1 max-w-[75%]`}>
-                            <div className={`px-3 py-2 rounded-2xl text-sm ${msg.type === 'user'
-                                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
-                                : msg.type === 'error'
-                                    ? 'bg-red-500/20 border border-red-500/50 text-red-200'
-                                    : 'bg-slate-800/80 text-slate-100'
+                {messages
+                    .filter(msg => {
+                        // Don't show assistant messages with empty text (happens during initial streaming)
+                        if (msg.type === 'assistant' && !msg.text.trim()) {
+                            return false;
+                        }
+                        return true;
+                    })
+                    .map(msg => (
+                        <div
+                            key={msg.id}
+                            className={`flex gap-2 ${msg.type === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+                        >
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm ${msg.type === 'user' ? 'bg-emerald-500' : 'bg-slate-700'
                                 }`}>
-                                {/* Display attached images */}
-                                {msg.images && msg.images.length > 0 && (
-                                    <div className="flex gap-2 flex-wrap mb-2">
-                                        {msg.images.map((file, idx) => (
-                                            <div key={idx} className="relative">
-                                                {file.fileType === 'image' ? (
-                                                    <img
-                                                        src={`data:${file.type};base64,${file.data}`}
-                                                        alt={file.name}
-                                                        className="w-32 h-32 object-cover rounded-lg border border-slate-600"
-                                                    />
-                                                ) : (
-                                                    <div className="w-32 h-32 bg-slate-700 rounded-lg border border-slate-600 flex items-center justify-center">
-                                                        <span className="text-2xl">🎵</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                                {msg.type === 'user' ? '👤' : '🏏'}
                             </div>
-                            <span className="text-xs text-slate-500 px-2 mt-1 block">
-                                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
+
+                            <div className={`flex-1 max-w-[75%]`}>
+                                <div className={`px-3 py-2 rounded-2xl text-sm ${msg.type === 'user'
+                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
+                                    : msg.type === 'error'
+                                        ? 'bg-red-500/20 border border-red-500/50 text-red-200'
+                                        : 'bg-slate-800/80 text-slate-100'
+                                    }`}>
+                                    {/* Display attached images */}
+                                    {msg.images && msg.images.length > 0 && (
+                                        <div className="flex gap-2 flex-wrap mb-2">
+                                            {msg.images.map((file, idx) => (
+                                                <div key={idx} className="relative">
+                                                    {file.fileType === 'image' ? (
+                                                        <img
+                                                            src={`data:${file.type};base64,${file.data}`}
+                                                            alt={file.name}
+                                                            className="w-32 h-32 object-cover rounded-lg border border-slate-600"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-32 h-32 bg-slate-700 rounded-lg border border-slate-600 flex items-center justify-center">
+                                                            <span className="text-2xl">🎵</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                                </div>
+                                <span className="text-xs text-slate-500 px-2 mt-1 block">
+                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    ))}
 
                 {isLoading && (
                     <div className="flex gap-2">

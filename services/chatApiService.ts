@@ -23,6 +23,7 @@ interface ChatRequest {
     conversation_history?: ChatMessage[];
     stream?: boolean;
     use_search?: boolean;
+    session_id?: string;
 }
 
 interface StreamChunk {
@@ -88,13 +89,14 @@ class ChatApiService {
         message: string,
         files: FileData[] = [],
         conversationHistory: Array<{ type: string; text: string; timestamp: number }> = [],
-        onChunk?: (chunk: string) => void
+        onChunk?: (chunk: string) => void,
+        sessionId?: string
     ): Promise<{ message: string }> {
         const hasImages = files.some(file => file.fileType === 'image');
 
         // If there are images, use FormData endpoint (no streaming)
         if (hasImages) {
-            return this.sendMessageWithImages(message, files, onChunk);
+            return this.sendMessageWithImages(message, files, onChunk, sessionId);
         }
 
         // Otherwise, use streaming endpoint
@@ -104,7 +106,8 @@ class ChatApiService {
             message,
             conversation_history: history,
             stream: true,
-            use_search: undefined // Let AI decide
+            use_search: undefined, // Let AI decide
+            session_id: sessionId
         };
 
         const response = await fetch(`${BACKEND_URL}chat/stream`, {
@@ -185,7 +188,8 @@ class ChatApiService {
     private async sendMessageWithImages(
         message: string,
         files: FileData[],
-        onChunk?: (chunk: string) => void
+        onChunk?: (chunk: string) => void,
+        sessionId?: string
     ): Promise<{ message: string }> {
         const formData = new FormData();
 
@@ -204,6 +208,11 @@ class ChatApiService {
 
         // Add stream parameter (although backend doesn't support streaming for images yet)
         formData.append('stream', 'false');
+
+        // Add session_id if provided
+        if (sessionId) {
+            formData.append('session_id', sessionId);
+        }
 
         const response = await fetch(`${BACKEND_URL}chat/message-with-image`, {
             method: 'POST',
