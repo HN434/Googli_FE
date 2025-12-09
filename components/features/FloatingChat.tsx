@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { History } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import chatApiService from '@/services/chatApiService';
 import pollyService from '@/services/pollyService';
 import transcribeService from '@/services/transcribeService';
@@ -36,6 +38,8 @@ interface Message {
     text: string;
     timestamp: number;
     images?: FileData[]; // Attached images
+    displayedText?: string; // For typewriter effect
+    isTyping?: boolean; // For typewriter animation
 }
 
 interface FileData {
@@ -88,6 +92,7 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     // Initialize Polly service for voice output
     useEffect(() => {
@@ -129,53 +134,74 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
         setUploadedFiles([]); // Clear uploaded files immediately
         setIsLoading(true);
 
-        // Create a placeholder bot message for streaming
-        const botMessageId = (Date.now() + 1).toString();
-        const botMessage: Message = {
-            id: botMessageId,
-            type: 'assistant',
-            text: '',
-            timestamp: Date.now()
-        };
-
-        // Add the bot message to the UI
-        setMessages([...newMessages, botMessage]);
+        // Reset textarea height to normal
+        if (textareaRef.current) {
+            textareaRef.current.style.height = '42px';
+        }
 
         try {
-            let streamedText = '';
-
-            // Call the backend API with streaming
-            const response = await chatApiService.sendMessage(
+            // Get complete response from API
+            const response = await chatApiService.sendMessageComplete(
                 userMessage.text,
                 uploadedFiles,
                 messages,
-                (chunk: string) => {
-                    // Update message incrementally as chunks arrive
-                    streamedText += chunk;
-                    setMessages(prevMessages =>
-                        prevMessages.map(msg =>
-                            msg.id === botMessageId
-                                ? { ...msg, text: streamedText }
-                                : msg
-                        )
-                    );
-                },
                 sessionId
             );
 
-            // Ensure final message is set (in case streaming missed anything)
-            setMessages(prevMessages =>
-                prevMessages.map(msg =>
-                    msg.id === botMessageId
-                        ? { ...msg, text: response.message }
-                        : msg
-                )
-            );
+            // Create bot message with complete text
+            const botMessageId = (Date.now() + 1).toString();
+            const botMessage: Message = {
+                id: botMessageId,
+                type: 'assistant',
+                text: response.message,
+                timestamp: Date.now(),
+                displayedText: '', // Start with empty displayed text
+                isTyping: true // Start typewriter effect
+            };
 
-            // Speak response if voice is enabled
+            // Add bot message to UI
+            setMessages([...newMessages, botMessage]);
+
+            // If voice is enabled, speak first then start typewriter
             if (voiceSettings.enabled && response.message) {
-                await pollyService.speakCommentary(response.message, voiceSettings.language, voiceSettings.gender);
+                try {
+                    // Wait for Polly to finish speaking
+                    await pollyService.speakCommentary(
+                        response.message,
+                        voiceSettings.language,
+                        voiceSettings.gender
+                    );
+                } catch (voiceErr) {
+                    console.error('Voice synthesis error:', voiceErr);
+                    // Continue to typewriter even if voice fails
+                }
             }
+
+            // Start typewriter effect after voice (or immediately if voice disabled)
+            const fullText = response.message;
+            let currentIndex = 0;
+            const typeSpeed = 15; // milliseconds per character
+
+            const typewriterInterval = setInterval(() => {
+                if (currentIndex <= fullText.length) {
+                    const displayedText = fullText.substring(0, currentIndex);
+                    setMessages(prevMessages =>
+                        prevMessages.map(msg =>
+                            msg.id === botMessageId
+                                ? {
+                                    ...msg,
+                                    displayedText,
+                                    isTyping: currentIndex < fullText.length
+                                }
+                                : msg
+                        )
+                    );
+                    currentIndex++;
+                } else {
+                    clearInterval(typewriterInterval);
+                }
+            }, typeSpeed);
+
         } catch (err: any) {
             const errorMessage: Message = {
                 id: (Date.now() + 2).toString(),
@@ -184,10 +210,8 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                 timestamp: Date.now()
             };
 
-            // Replace the bot message with error message
-            setMessages(prevMessages =>
-                prevMessages.filter(msg => msg.id !== botMessageId).concat(errorMessage)
-            );
+            // Add error message
+            setMessages([...newMessages, errorMessage]);
         } finally {
             setIsLoading(false);
         }
@@ -433,8 +457,29 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
             <div className="px-4 py-3 border-b border-slate-700/50 bg-slate-900/30 backdrop-blur-sm">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                            <span className="text-xl">🏏</span>
+                        <div className="w-10 h-10 rounded-full bg-gray-800/90 border border-emerald-500/30 flex items-center justify-center">
+                            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none">
+                                <defs>
+                                    <linearGradient id="header-googli-gradient" x1="0" x2="1" y1="1" y2="0">
+                                        <stop offset="0%" stopColor="#10b981"></stop>
+                                        <stop offset="100%" stopColor="#3b82f6"></stop>
+                                    </linearGradient>
+                                    <filter id="header-glow-filter">
+                                        <feGaussianBlur stdDeviation="1.5" result="coloredBlur"></feGaussianBlur>
+                                        <feMerge>
+                                            <feMergeNode in="coloredBlur"></feMergeNode>
+                                            <feMergeNode in="SourceGraphic"></feMergeNode>
+                                        </feMerge>
+                                    </filter>
+                                </defs>
+                                <circle cx="50" cy="50" r="45" stroke="url(#header-googli-gradient)" strokeWidth="3" opacity="0.4" filter="url(#header-glow-filter)"></circle>
+                                <circle cx="50" cy="50" r="45" stroke="url(#header-googli-gradient)" strokeWidth="3"></circle>
+                                <path d="M 30 25 C 40 40, 40 60, 30 75
+                                   M 70 25 C 60 40, 60 60, 70 75
+                                   M 50 10 V 20 M 50 80 V 90
+                                   M 40 15 L 45 20 M 60 15 L 55 20
+                                   M 40 85 L 45 80 M 60 85 L 55 80" stroke="url(#header-googli-gradient)" strokeWidth="2.5" strokeLinecap="round"></path>
+                            </svg>
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
@@ -624,7 +669,32 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
             <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900 hover:scrollbar-thumb-emerald-500">
                 {messages.length === 0 && (
                     <div className="text-center py-8">
-                        <div className="text-5xl mb-3">🏏</div>
+                        <div className="flex justify-center mb-3">
+                            <div className="w-20 h-20 rounded-full bg-gray-800/90 border border-emerald-500/30 flex items-center justify-center">
+                                <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none">
+                                    <defs>
+                                        <linearGradient id="welcome-googli-gradient" x1="0" x2="1" y1="1" y2="0">
+                                            <stop offset="0%" stopColor="#10b981"></stop>
+                                            <stop offset="100%" stopColor="#3b82f6"></stop>
+                                        </linearGradient>
+                                        <filter id="welcome-glow-filter">
+                                            <feGaussianBlur stdDeviation="1.5" result="coloredBlur"></feGaussianBlur>
+                                            <feMerge>
+                                                <feMergeNode in="coloredBlur"></feMergeNode>
+                                                <feMergeNode in="SourceGraphic"></feMergeNode>
+                                            </feMerge>
+                                        </filter>
+                                    </defs>
+                                    <circle cx="50" cy="50" r="45" stroke="url(#welcome-googli-gradient)" strokeWidth="3" opacity="0.4" filter="url(#welcome-glow-filter)"></circle>
+                                    <circle cx="50" cy="50" r="45" stroke="url(#welcome-googli-gradient)" strokeWidth="3"></circle>
+                                    <path d="M 30 25 C 40 40, 40 60, 30 75
+                                       M 70 25 C 60 40, 60 60, 70 75
+                                       M 50 10 V 20 M 50 80 V 90
+                                       M 40 15 L 45 20 M 60 15 L 55 20
+                                       M 40 85 L 45 80 M 60 85 L 55 80" stroke="url(#welcome-googli-gradient)" strokeWidth="2.5" strokeLinecap="round"></path>
+                                </svg>
+                            </div>
+                        </div>
                         <h4 className="text-lg font-semibold text-white mb-2">Welcome!</h4>
                         <p className="text-sm text-slate-400 mb-4">Ask me anything about cricket</p>
                         <div className="space-y-2">
@@ -643,8 +713,8 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
 
                 {messages
                     .filter(msg => {
-                        // Don't show assistant messages with empty text (happens during initial streaming)
-                        if (msg.type === 'assistant' && !msg.text.trim()) {
+                        // Don't show assistant messages with empty text (unless typing)
+                        if (msg.type === 'assistant' && !msg.text.trim() && !msg.isTyping) {
                             return false;
                         }
                         return true;
@@ -686,7 +756,17 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                                             ))}
                                         </div>
                                     )}
-                                    <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                                    {/* Render markdown for assistant messages, plain text for user */}
+                                    {msg.type === 'assistant' ? (
+                                        <div className="prose prose-invert prose-sm max-w-none">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                {msg.displayedText || msg.text || ''}
+                                            </ReactMarkdown>
+                                            {msg.isTyping && <span className="animate-pulse">▊</span>}
+                                        </div>
+                                    ) : (
+                                        <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                                    )}
                                 </div>
                                 <span className="text-xs text-slate-500 px-2 mt-1 block">
                                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -765,6 +845,7 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
 
                         <div className="relative">
                             <textarea
+                                ref={textareaRef}
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
                                 onKeyDown={(e) => {

@@ -66,4 +66,90 @@
   .scrollbar-thin:hover::-webkit-scrollbar-thumb {
     background: #10b981;
   }
+
+  /* Markdown prose styles for chat */
+  .prose-invert {
+    --tw-prose-body: #e2e8f0;
+    --tw-prose-headings: #f1f5f9;
+    --tw-prose-links: #10b981;
+    --tw-prose-bold: #f1f5f9;
+    --tw-prose-code: #10b981;
+    --tw-prose-pre-bg: #0f172a;
+  }
+
+  .prose p {
+    margin: 0.5em 0;
+    line-height: 1.6;
+  }
+
+  .prose strong {
+    font-weight: 600;
+    color: #f1f5f9;
+  }
+
+  .prose em {
+    font-style: italic;
+  }
+
+  .prose code {
+    background: #1e293b;
+    padding: 0.2em 0.4em;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+    color: #10b981;
+    font-family: 'Courier New', monospace;
+  }
+
+  .prose pre {
+    background: #0f172a;
+    padding: 1em;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin: 0.5em 0;
+  }
+
+  .prose pre code {
+    background: transparent;
+    padding: 0;
+    color: #e2e8f0;
+  }
+
+  .prose ul, .prose ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+  }
+
+  .prose li {
+    margin: 0.25em 0;
+  }
+
+  .prose h1, .prose h2, .prose h3 {
+    font-weight: 600;
+    margin: 0.75em 0 0.5em 0;
+  }
+
+  .prose h1 {
+    font-size: 1.25em;
+  }
+
+  .prose h2 {
+    font-size: 1.125em;
+  }
+
+  .prose h3 {
+    font-size: 1em;
+  }
+
+  .prose a {
+    color: #10b981;
+    text-decoration: underline;
+  }
+
+  .prose blockquote {
+    border-left: 3px solid #10b981;
+    padding-left: 1em;
+    margin: 0.5em 0;
+    font-style: italic;
+    color: #cbd5e1;
+  }
 }

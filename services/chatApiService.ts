@@ -182,6 +182,98 @@ class ChatApiService {
     }
 
     /**
+     * Send a message with complete response (no streaming)
+     * This is the new method that gets the full response before displaying
+     */
+    async sendMessageComplete(
+        message: string,
+        files: FileData[] = [],
+        conversationHistory: Array<{ type: string; text: string; timestamp: number }> = [],
+        sessionId?: string
+    ): Promise<{ message: string }> {
+        const hasImages = files.some(file => file.fileType === 'image');
+
+        // If there are images, use FormData endpoint
+        if (hasImages) {
+            return this.sendMessageWithImagesComplete(message, files, sessionId);
+        }
+
+        // Otherwise, use regular chat endpoint with stream=false
+        const history = this.convertMessageHistory(conversationHistory);
+
+        const requestBody: ChatRequest = {
+            message,
+            conversation_history: history,
+            stream: false, // Complete response, no streaming
+            use_search: undefined, // Let AI decide
+            session_id: sessionId
+        };
+
+        const response = await fetch(`${BACKEND_URL}chat/message`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Chat API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        const result = await response.json();
+        return { message: result.message };
+    }
+
+    /**
+     * Send a message with images using FormData (complete response)
+     * Note: This endpoint does not support streaming
+     */
+    private async sendMessageWithImagesComplete(
+        message: string,
+        files: FileData[],
+        sessionId?: string
+    ): Promise<{ message: string }> {
+        const formData = new FormData();
+
+        // Add message
+        formData.append('message', message);
+
+        // Add images as File objects
+        for (const file of files) {
+            if (file.fileType === 'image') {
+                // Convert base64 back to File object
+                const blob = this.base64ToBlob(file.data, file.type);
+                const imageFile = new File([blob], file.name, { type: file.type });
+                formData.append('images', imageFile);
+            }
+        }
+
+        // Add stream parameter
+        formData.append('stream', 'false');
+
+        // Add session_id if provided
+        if (sessionId) {
+            formData.append('session_id', sessionId);
+        }
+
+        const response = await fetch(`${BACKEND_URL}chat/message-with-image`, {
+            method: 'POST',
+            body: formData
+            // Don't set Content-Type header - browser will set it with boundary
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Chat API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        const result = await response.json();
+        return { message: result.message };
+    }
+
+    /**
      * Send a message with images using FormData
      * Note: This endpoint does not support streaming
      */
