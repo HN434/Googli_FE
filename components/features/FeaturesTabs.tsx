@@ -6,8 +6,9 @@ import VideoAnalysisTab from "./tabs/VideoAnalysisTab";
 import CommentaryTab from "./tabs/CommentaryTab";
 import PredictionsTab from "./tabs/PredictionsTab";
 import MultiModelChat from "./tabs/MultiModelChat";
+import ThreeDVideo from "./tabs/3DVideo";
 
-type TabType = "video" | "commentary" | "3d-replay-video" | "multimodel-chat";
+type TabType = "video" | "commentary" | "3d-replay-video" | "multimodel-chat" | "3d-video";
 
 export default function FeaturesTabs() {
   const [activeTab, setActiveTab] = useState<TabType>("commentary");
@@ -17,6 +18,7 @@ export default function FeaturesTabs() {
     { id: "multimodel-chat" as TabType, label: "Multimodel Chat", icon: MessageSquareText },
     { id: "video" as TabType, label: "Video Analysis", icon: Video },
     { id: "3d-replay-video" as TabType, label: "3D Replay Video", icon: Box },
+    { id: "3d-video" as TabType, label: "3D Video", icon: Box },
   ];
 
   return (
@@ -48,6 +50,7 @@ export default function FeaturesTabs() {
           {activeTab === "commentary" && <CommentaryTab />}
           {activeTab === "3d-replay-video" && <PredictionsTab />}
           {activeTab === "multimodel-chat" && <MultiModelChat />}
+          {activeTab === "3d-video" && <ThreeDVideo />}
         </div>
       </div>
     </section>
