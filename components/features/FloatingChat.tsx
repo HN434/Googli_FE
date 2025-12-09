@@ -726,7 +726,7 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                         >
                             <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm ${msg.type === 'user' ? 'bg-emerald-500' : 'bg-slate-700'
                                 }`}>
-                                {msg.type === 'user' ? '👤' : '🏏'}
+                                {msg.type === 'user' ? '👤' : 'AI'}
                             </div>
 
                             <div className={`flex-1 max-w-[75%]`}>
@@ -762,7 +762,6 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                 {msg.displayedText || msg.text || ''}
                                             </ReactMarkdown>
-                                            {msg.isTyping && <span className="animate-pulse">▊</span>}
                                         </div>
                                     ) : (
                                         <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>

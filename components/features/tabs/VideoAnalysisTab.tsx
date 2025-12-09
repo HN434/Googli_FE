@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from "@/components/ui/Button";
-import { Upload, Play, Pause, RefreshCw, Loader2, Download, AlertTriangle, TrendingUp, CheckCircle } from "lucide-react";
+import { Upload, Play, Pause, RefreshCw, Loader2, Download, AlertTriangle, TrendingUp, CheckCircle, Volume2, VolumeX } from "lucide-react";
 import { useRef, useState, useEffect, useCallback } from "react";
 import {
   parseKeypoints,
@@ -12,6 +12,7 @@ import {
 } from "@/utils/poseUtils";
 import { scaleBatDetections, drawBatDetection } from "@/utils/batUtils";
 import { useVideoWebSocket } from "@/hooks/useVideoWebSocket";
+import ThreeDSkeletonView from "./ThreeDSkeletonView";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BE_URL || "http://localhost:8000/api";
 
@@ -38,6 +39,10 @@ export default function VideoAnalysisTab() {
   const [bedrockAnalytics, setBedrockAnalytics] = useState<any>(null);
   const [expandedDrill, setExpandedDrill] = useState<number | null>(null);
   const [wsEnabled, setWsEnabled] = useState(false);
+  const [viewMode, setViewMode] = useState<'video' | '3d'>('video');
+  const [is3DPlaying, setIs3DPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+
 
   // WebSocket integration
   const { isConnected: wsConnected, isConnecting: wsConnecting, error: wsError } = useVideoWebSocket({
@@ -402,15 +407,29 @@ export default function VideoAnalysisTab() {
   }, [videoUrl, renderLoop]);
 
   const togglePlay = () => {
+    if (viewMode === '3d') {
+      // Toggle 3D animation independently
+      setIs3DPlaying(!is3DPlaying);
+    } else {
+      // Toggle video playback
+      const video = videoRef.current;
+      if (video) {
+        if (video.paused) {
+          video.play();
+          setIsPlaying(true);
+        } else {
+          video.pause();
+          setIsPlaying(false);
+        }
+      }
+    }
+  };
+
+  const toggleMute = () => {
     const video = videoRef.current;
     if (video) {
-      if (video.paused) {
-        video.play();
-        setIsPlaying(true);
-      } else {
-        video.pause();
-        setIsPlaying(false);
-      }
+      video.muted = !video.muted;
+      setIsMuted(!isMuted);
     }
   };
 
@@ -532,47 +551,100 @@ export default function VideoAnalysisTab() {
             />
           </div>
         ) : (
-          // Player State
+          // Player State with Tabbed Views
           <div className="relative flex flex-col items-center bg-black">
-            {/* KEY FIX IS HERE: 
-               1. 'max-h-[65vh]' limits height to 65% of viewport.
-               2. 'w-auto' lets width shrink to maintain aspect ratio.
-               3. Wrapper div centers it.
-            */}
-            <div className="relative inline-block">
-              <video
-                ref={videoRef}
-                src={videoUrl}
-                className="max-h-[65vh] w-auto block mx-auto"
-                playsInline
-                onLoadedMetadata={handleVideoMetadata}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onEnded={() => setIsPlaying(false)}
-                onClick={togglePlay}
-              />
-              <canvas
-                ref={canvasRef}
-                className="absolute top-0 left-0 w-full h-full pointer-events-none"
-              />
-            </div>
+            {/* Tab Switcher - Only show when keypoints data is available */}
+            {keypointsData.length > 0 && (
+              <div className="w-full bg-slate-800/90 border-b border-slate-700 p-3 sm:p-4 flex items-center justify-center gap-2 sm:gap-4">
+                <button
+                  onClick={() => setViewMode('video')}
+                  className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base ${viewMode === 'video'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
+                    : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                    }`}
+                >
+                  📹 Pose Analytics
+                </button>
+                <button
+                  onClick={() => setViewMode('3d')}
+                  className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base ${viewMode === '3d'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
+                    : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                    }`}
+                >
+                  🎯 3D View
+                </button>
+              </div>
+            )}
 
-            {/* Controls Bar */}
+            {/* Conditional Rendering: Video or 3D View */}
+            {viewMode === 'video' ? (
+              // Original Video Player with Canvas Overlay
+              <div className="relative inline-block">
+                <video
+                  ref={videoRef}
+                  src={videoUrl}
+                  className="max-h-[65vh] w-auto block mx-auto"
+                  playsInline
+                  muted={isMuted}
+                  onLoadedMetadata={handleVideoMetadata}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  onEnded={() => setIsPlaying(false)}
+                  onClick={togglePlay}
+                />
+                <canvas
+                  ref={canvasRef}
+                  className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                />
+              </div>
+            ) : (
+              // 3D Skeleton View - Independent Animation
+              <ThreeDSkeletonView
+                keypointsData={keypointsData}
+                isPlaying={is3DPlaying}
+                fps={calculatedFPS}
+              />
+            )}
+
+            {/* Controls Bar - Shared for Both Views */}
             <div className="w-full bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
               <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
                 <button
                   onClick={togglePlay}
                   className="w-10 h-10 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-400 text-white transition-colors flex-shrink-0"
                 >
-                  {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-1" />}
+                  {(viewMode === 'video' ? isPlaying : is3DPlaying) ? (
+                    <Pause size={18} fill="currentColor" />
+                  ) : (
+                    <Play size={18} fill="currentColor" className="ml-1" />
+                  )}
                 </button>
+
+                {/* Mute Button - Only visible in video mode */}
+                {viewMode === 'video' && (
+                  <button
+                    onClick={toggleMute}
+                    className="w-10 h-10 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-slate-700 hover:bg-slate-600 text-white transition-colors flex-shrink-0"
+                  >
+                    {isMuted ? (
+                      <VolumeX size={18} />
+                    ) : (
+                      <Volume2 size={18} />
+                    )}
+                  </button>
+                )}
 
                 <div className="flex flex-col min-w-0 flex-1">
                   <span className="text-slate-200 text-xs sm:text-sm font-medium">
-                    Skeleton Overlay
+                    {viewMode === 'video' ? 'Pose Analytics' : '3D Skeleton View'}
                   </span>
                   <span className="text-slate-500 text-[10px] sm:text-xs font-mono truncate">
-                    Frame: {currentFrame} / {keypointsData.length} ({calculatedFPS.toFixed(1)} FPS)
+                    {viewMode === 'video' ? (
+                      <>Frame: {currentFrame} / {keypointsData.length} ({calculatedFPS.toFixed(1)} FPS)</>
+                    ) : (
+                      <>{is3DPlaying ? '▶ Playing' : '⏸ Paused'} • {keypointsData.length} frames • {calculatedFPS.toFixed(1)} FPS</>
+                    )}
                   </span>
                 </div>
               </div>
@@ -588,6 +660,8 @@ export default function VideoAnalysisTab() {
                   setBedrockAnalytics(null);
                   setIsProcessing(false);
                   setWsEnabled(false);
+                  setViewMode('video');
+                  setIs3DPlaying(false);
                 }}
                 className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs sm:text-sm self-end sm:self-auto"
               >
