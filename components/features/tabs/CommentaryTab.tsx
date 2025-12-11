@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import cricketApi from '@/services/cricketApi';
-import pollyService from '@/services/pollyService';
+// AWS Polly Service (commented out, using Murf AI instead)
+// import pollyService from '@/services/pollyService';
+// Murf AI Service (new primary TTS provider)
+import murfService from '@/services/murfService';
 
 // Custom Select Component with Tooltip
 interface CustomSelectProps {
@@ -175,28 +178,55 @@ export default function CommentaryTab() {
   const lastFiveBalls = useRef<CommentaryEntry[]>([]);
 
   useEffect(() => {
-    setAudioService(pollyService.getAudioServiceName());
+    // Get audio service name from Murf AI
+    setAudioService(murfService.getAudioServiceName());
+    // AWS Polly (commented out)
+    // setAudioService(pollyService.getAudioServiceName());
   }, [isVoiceEnabled]);
 
   // Handle pending first speech
   useEffect(() => {
     if (pendingFirstSpeech) {
       if (isVoiceEnabled) {
-        pollyService.speakCommentary(pendingFirstSpeech.text, commentaryLanguage, commentaryVoice, commentaryTone);
+        // Murf AI TTS
+        murfService.speakCommentary(pendingFirstSpeech.text, commentaryLanguage, commentaryVoice, commentaryTone);
+        // AWS Polly (commented out)
+        // pollyService.speakCommentary(pendingFirstSpeech.text, commentaryLanguage, commentaryVoice, commentaryTone);
       }
       setPendingFirstSpeech(null);
     }
   }, [pendingFirstSpeech, isVoiceEnabled, commentaryLanguage, commentaryVoice, commentaryTone]);
 
-  // Initialize API key from environment variable and load matches
+  // Initialize API keys from environment variables and load matches
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_RAPIDAPI_KEY;
+    const murfApiKey = process.env.NEXT_PUBLIC_MURF_API_KEY;
+
     if (apiKey) {
       cricketApi.setApiKey(apiKey);
       loadMatches();
     } else {
       setMatchesError('API key not configured. Please set NEXT_PUBLIC_RAPIDAPI_KEY in .env.local');
     }
+
+    // Initialize Murf AI if API key is available
+    if (murfApiKey) {
+      try {
+        murfService.initialize(murfApiKey);
+        console.log('Murf AI initialized successfully');
+      } catch (error: any) {
+        console.error('Failed to initialize Murf AI:', error.message);
+      }
+    } else {
+      console.warn('Murf AI API key not found. Please set NEXT_PUBLIC_MURF_API_KEY in .env.local');
+    }
+
+    // AWS Polly initialization (commented out)
+    // const awsAccessKey = process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID;
+    // const awsSecretKey = process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY;
+    // if (awsAccessKey && awsSecretKey) {
+    //   pollyService.initialize(awsAccessKey, awsSecretKey, 'us-east-1');
+    // }
   }, []);
 
   // Cleanup WebSocket on unmount
@@ -233,9 +263,12 @@ export default function CommentaryTab() {
             return updated.slice(0, 50); // Keep last 50
           });
 
-          // Voice Commentary for the single entry being displayed
+          // Voice Commentary for the single entry being displayed  
           if (isVoiceEnabled) {
-            pollyService.speakCommentary(nextEntry.text, commentaryLanguage, commentaryVoice, commentaryTone);
+            // Murf AI TTS
+            murfService.speakCommentary(nextEntry.text, commentaryLanguage, commentaryVoice, commentaryTone);
+            // AWS Polly (commented out)
+            // pollyService.speakCommentary(nextEntry.text, commentaryLanguage, commentaryVoice, commentaryTone);
           }
         }
       }
@@ -485,7 +518,10 @@ export default function CommentaryTab() {
       wsRef.current.close();
       wsRef.current = null;
     }
-    pollyService.stop();
+    // Stop Murf AI TTS
+    murfService.stop();
+    // Stop AWS Polly (commented out)
+    // pollyService.stop();
   };
 
   const handleLoadMore = async () => {
@@ -748,7 +784,9 @@ export default function CommentaryTab() {
               </div>
               <button
                 className="px-3 py-1.5 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 hover:bg-emerald-500/30 transition-all text-xs font-semibold"
-                onClick={() => pollyService.speakCommentary('This is a test of the voice commentary system. Welcome to Googli AI!', commentaryLanguage, commentaryVoice, commentaryTone)}
+                onClick={() => murfService.speakCommentary('This is a test of the voice commentary system. Welcome to Googli AI!', commentaryLanguage, commentaryVoice, commentaryTone)}
+                // AWS Polly version (commented out):
+                // onClick={() => pollyService.speakCommentary('This is a test of the voice commentary system. Welcome to Googli AI!', commentaryLanguage, commentaryVoice, commentaryTone)}
                 title="Test voice output"
               >
                 Test Voice
