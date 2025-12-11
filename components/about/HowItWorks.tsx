@@ -14,8 +14,8 @@ export default function HowItWorks() {
     },
     {
       icon: TrendingUp,
-      title: "Improve",
-      description: "Receive a detailed report with key observations, improvement areas and personalised drills. Chat with our AI coach to get one-on-one simulated or practice or watch key match replays.",
+      title: "MultiModel Chat",
+      description: "Chat with our AI coach to get one-on-one simulated or practice or watch key match replays.",
     },
   ];
 

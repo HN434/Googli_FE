@@ -587,8 +587,8 @@ export default function MultiModelChat() {
                             >
                                 <option value="UK-EN">English</option>
                                 <option value="Hindi">Hindi</option>
-                                <option value="Tamil">Tamil</option>
-                                <option value="Telugu">Telugu</option>
+                                <option value="Spanish">Spanish</option>
+                                {/* <option value="Telugu">Telugu</option> */}
                             </select>
                         </div>
 
@@ -613,9 +613,10 @@ export default function MultiModelChat() {
                                 disabled={!voiceSettings.enabled}
                                 className="w-full px-3 py-2 text-sm bg-gray-800/80 text-white rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             >
-                                <option value="Professional">Normal</option>
-                                <option value="Casual">Casual</option>
-                                <option value="Enthusiastic">Enthusiastic</option>
+                                <option value="Professional">Calm</option>
+                                <option value="Casual">Excited</option>
+                                <option value="Professional">Professional</option>
+                                <option value="Dramatic">Dramatic</option>
                             </select>
                         </div>
                     </div>

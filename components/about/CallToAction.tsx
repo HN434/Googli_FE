@@ -11,7 +11,7 @@ export default function CallToAction() {
         <p className="text-gray-400 mb-8">
           Explore the powerful features that make Googli.ai the ultimate cricket companion.
         </p>
-        <Link href="/#features">
+        <Link href="/features">
           <Button variant="primary" className="text-base px-8 py-3.5">
             Explore Our Features →
           </Button>

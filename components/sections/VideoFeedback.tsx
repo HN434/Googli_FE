@@ -3,20 +3,20 @@ import { Upload, CheckCircle2 } from "lucide-react";
 
 export default function VideoFeedback() {
   const feedbackItems = [
-    { 
-      title: "Front-foot alignment", 
-      description: "94% confident: Slight forward lean detected", 
-      progress: 94 
+    {
+      title: "Front-foot alignment",
+      description: "94% confident: Slight forward lean detected",
+      progress: 94
     },
-    { 
-      title: "Bat angle tracking", 
-      description: "88% confident: Optimal angle maintained", 
-      progress: 88 
+    {
+      title: "Bat angle tracking",
+      description: "88% confident: Optimal angle maintained",
+      progress: 88
     },
-    { 
-      title: "Follow-through motion", 
-      description: "91% confident: Good shoulder rotation", 
-      progress: 91 
+    {
+      title: "Follow-through motion",
+      description: "91% confident: Good shoulder rotation",
+      progress: 91
     },
   ];
 
@@ -44,11 +44,11 @@ export default function VideoFeedback() {
                 Drag and drop or click to upload your cricket training video.
               </p>
             </div>
-            
+
             <Button variant="primary" className="w-full py-3 text-base">
               Choose File
             </Button>
-            
+
             <p className="text-gray-500 text-xs text-center mt-4">
               Supports MP4, MOV, AVI up to 100MB
             </p>
@@ -76,7 +76,7 @@ export default function VideoFeedback() {
                       </p>
                     </div>
                   </div>
-                  
+
                   {/* Progress Bar */}
                   <div className="relative">
                     <div className="w-full bg-gray-600 rounded-full h-2 overflow-hidden">
