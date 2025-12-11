@@ -145,7 +145,9 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                 userMessage.text,
                 uploadedFiles,
                 messages,
-                sessionId
+                sessionId,
+                voiceSettings.language,
+                voiceSettings.persona // persona is the tone
             );
 
             // Create bot message with complete text
@@ -180,7 +182,7 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
             // Start typewriter effect after voice (or immediately if voice disabled)
             const fullText = response.message;
             let currentIndex = 0;
-            const typeSpeed = 15; // milliseconds per character
+            const typeSpeed = 2; // milliseconds per character
 
             const typewriterInterval = setInterval(() => {
                 if (currentIndex <= fullText.length) {

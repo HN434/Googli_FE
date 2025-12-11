@@ -24,6 +24,8 @@ interface ChatRequest {
     stream?: boolean;
     use_search?: boolean;
     session_id?: string;
+    language?: string;
+    tone?: string;
 }
 
 interface StreamChunk {
@@ -90,13 +92,15 @@ class ChatApiService {
         files: FileData[] = [],
         conversationHistory: Array<{ type: string; text: string; timestamp: number }> = [],
         onChunk?: (chunk: string) => void,
-        sessionId?: string
+        sessionId?: string,
+        language?: string,
+        tone?: string
     ): Promise<{ message: string }> {
         const hasImages = files.some(file => file.fileType === 'image');
 
         // If there are images, use FormData endpoint (no streaming)
         if (hasImages) {
-            return this.sendMessageWithImages(message, files, onChunk, sessionId);
+            return this.sendMessageWithImages(message, files, onChunk, sessionId, language, tone);
         }
 
         // Otherwise, use streaming endpoint
@@ -107,7 +111,9 @@ class ChatApiService {
             conversation_history: history,
             stream: true,
             use_search: undefined, // Let AI decide
-            session_id: sessionId
+            session_id: sessionId,
+            language,
+            tone
         };
 
         const response = await fetch(`${BACKEND_URL}chat/stream`, {
@@ -189,13 +195,15 @@ class ChatApiService {
         message: string,
         files: FileData[] = [],
         conversationHistory: Array<{ type: string; text: string; timestamp: number }> = [],
-        sessionId?: string
+        sessionId?: string,
+        language?: string,
+        tone?: string
     ): Promise<{ message: string }> {
         const hasImages = files.some(file => file.fileType === 'image');
 
         // If there are images, use FormData endpoint
         if (hasImages) {
-            return this.sendMessageWithImagesComplete(message, files, sessionId);
+            return this.sendMessageWithImagesComplete(message, files, sessionId, language, tone);
         }
 
         // Otherwise, use regular chat endpoint with stream=false
@@ -206,7 +214,9 @@ class ChatApiService {
             conversation_history: history,
             stream: false, // Complete response, no streaming
             use_search: undefined, // Let AI decide
-            session_id: sessionId
+            session_id: sessionId,
+            language,
+            tone
         };
 
         const response = await fetch(`${BACKEND_URL}chat/message`, {
@@ -233,7 +243,9 @@ class ChatApiService {
     private async sendMessageWithImagesComplete(
         message: string,
         files: FileData[],
-        sessionId?: string
+        sessionId?: string,
+        language?: string,
+        tone?: string
     ): Promise<{ message: string }> {
         const formData = new FormData();
 
@@ -256,6 +268,14 @@ class ChatApiService {
         // Add session_id if provided
         if (sessionId) {
             formData.append('session_id', sessionId);
+        }
+
+        // Add language and tone if provided
+        if (language) {
+            formData.append('language', language);
+        }
+        if (tone) {
+            formData.append('tone', tone);
         }
 
         const response = await fetch(`${BACKEND_URL}chat/message-with-image`, {
@@ -281,7 +301,9 @@ class ChatApiService {
         message: string,
         files: FileData[],
         onChunk?: (chunk: string) => void,
-        sessionId?: string
+        sessionId?: string,
+        language?: string,
+        tone?: string
     ): Promise<{ message: string }> {
         const formData = new FormData();
 
@@ -304,6 +326,14 @@ class ChatApiService {
         // Add session_id if provided
         if (sessionId) {
             formData.append('session_id', sessionId);
+        }
+
+        // Add language and tone if provided
+        if (language) {
+            formData.append('language', language);
+        }
+        if (tone) {
+            formData.append('tone', tone);
         }
 
         const response = await fetch(`${BACKEND_URL}chat/message-with-image`, {

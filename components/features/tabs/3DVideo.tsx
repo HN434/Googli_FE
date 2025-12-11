@@ -44,7 +44,7 @@ const COCO_BONES = [
 /**
  * Processes 2D keypoint data into normalized 3D coordinates for animation.
  */
-function process2DPoseData(rawData: FrameData[]): number[][][] {
+function process2DPoseData() {
   if (!JOE_ROOT_POSE_DATA || JOE_ROOT_POSE_DATA.length === 0) return [];
 
   const processedData: number[][][] = [];
@@ -206,9 +206,9 @@ function Loader() {
 
 
 // --- 5. MAIN COMPONENT (Updated with Data Loading and State) ---
-export default function ThreeDVideo({ initialPoseData }: ThreeDVideoProps) {
+export default function ThreeDVideo() {
   // Process the raw 2D data into a 3D animation array only once
-  const skeletalData = useMemo(() => process2DPoseData(initialPoseData), [initialPoseData]);
+  const skeletalData = useMemo(() => process2DPoseData(), []);
 
   const [glbModelUrl, setGlbModelUrl] = useState<string>("/models/sample.glb");
   const [isLoading, setIsLoading] = useState(false);
@@ -250,7 +250,7 @@ export default function ThreeDVideo({ initialPoseData }: ThreeDVideoProps) {
       <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center justify-center">
         <Button
           onClick={() => setViewMode('skeletal')}
-          variant={viewMode === 'skeletal' ? 'default' : 'secondary'}
+          variant={viewMode === 'skeletal' ? 'primary' : 'secondary'}
           className={viewMode === 'skeletal' ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}
         >
           View Skeletal Animation
@@ -258,7 +258,7 @@ export default function ThreeDVideo({ initialPoseData }: ThreeDVideoProps) {
 
         <Button
           onClick={() => setViewMode('glb')}
-          variant={viewMode === 'glb' ? 'default' : 'secondary'}
+          variant={viewMode === 'glb' ? 'primary' : 'secondary'}
           className={viewMode === 'glb' ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}
         >
           View GLB Model

@@ -300,7 +300,9 @@ class PollyService {
             const data: PollyResponse = await this.polly.synthesizeSpeech(params).promise();
 
             // Create audio from the response
-            const audioBlob = new Blob([data.AudioStream], { type: 'audio/mpeg' });
+            // Convert to Uint8Array with ArrayBuffer to satisfy TypeScript's Blob type requirements
+            const audioData = new Uint8Array(data.AudioStream);
+            const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
             const audioUrl = URL.createObjectURL(audioBlob);
 
             console.log('[Polly] AWS Polly audio generated successfully');

@@ -42,6 +42,9 @@ export default function VideoAnalysisTab() {
   const [viewMode, setViewMode] = useState<'video' | '3d'>('video');
   const [is3DPlaying, setIs3DPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
 
 
   // WebSocket integration
@@ -61,9 +64,9 @@ export default function VideoAnalysisTab() {
     }, [videoDuration]),
     onBedrockAnalytics: useCallback((analytics: any) => {
       console.log('Received Bedrock analytics via WebSocket', analytics);
-      const textData = analytics.content[0].text;
-      const analyticsData = JSON.parse(textData);
-      setBedrockAnalytics(analyticsData);
+      // const textData = analytics.content[0].text;
+      // const analyticsData = JSON.parse(textData);
+      setBedrockAnalytics(analytics);
       setUploadStatus('Analysis complete!');
     }, []),
     onError: useCallback((errorMsg: string) => {
@@ -433,6 +436,44 @@ export default function VideoAnalysisTab() {
     }
   };
 
+  const handlePlaybackSpeedChange = (speed: number) => {
+    const video = videoRef.current;
+    if (video) {
+      video.playbackRate = speed;
+      setPlaybackSpeed(speed);
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current;
+    if (video) {
+      const seekTime = parseFloat(e.target.value);
+      video.currentTime = seekTime;
+      setCurrentTime(seekTime);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    const video = videoRef.current;
+    if (video) {
+      setCurrentTime(video.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    const video = videoRef.current;
+    if (video) {
+      setDuration(video.duration);
+      handleVideoMetadata();
+    }
+  };
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="flex flex-col items-center w-full max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
       {/* Header */}
@@ -587,7 +628,8 @@ export default function VideoAnalysisTab() {
                   className="max-h-[65vh] w-auto block mx-auto"
                   playsInline
                   muted={isMuted}
-                  onLoadedMetadata={handleVideoMetadata}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  onTimeUpdate={handleTimeUpdate}
                   onPlay={() => setIsPlaying(true)}
                   onPause={() => setIsPlaying(false)}
                   onEnded={() => setIsPlaying(false)}
@@ -608,8 +650,43 @@ export default function VideoAnalysisTab() {
             )}
 
             {/* Controls Bar - Shared for Both Views */}
-            <div className="w-full bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
-              <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
+            <div className="w-full bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 flex flex-col gap-3">
+              {/* Seek Bar - Only for video mode */}
+              {viewMode === 'video' && (
+                <div className="w-full">
+                  <input
+                    type="range"
+                    min="0"
+                    max={duration || 0}
+                    step="0.1"
+                    value={currentTime}
+                    onChange={handleSeek}
+                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer
+                      [&::-webkit-slider-thumb]:appearance-none
+                      [&::-webkit-slider-thumb]:w-3
+                      [&::-webkit-slider-thumb]:h-3
+                      [&::-webkit-slider-thumb]:rounded-full
+                      [&::-webkit-slider-thumb]:bg-emerald-500
+                      [&::-webkit-slider-thumb]:cursor-pointer
+                      [&::-moz-range-thumb]:w-3
+                      [&::-moz-range-thumb]:h-3
+                      [&::-moz-range-thumb]:rounded-full
+                      [&::-moz-range-thumb]:bg-emerald-500
+                      [&::-moz-range-thumb]:border-0
+                      [&::-moz-range-thumb]:cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, rgb(16 185 129) 0%, rgb(16 185 129) ${(currentTime / (duration || 1)) * 100}%, rgb(51 65 85) ${(currentTime / (duration || 1)) * 100}%, rgb(51 65 85) 100%)`
+                    }}
+                  />
+                  <div className="flex justify-between items-center mt-1">
+                    <span className="text-xs text-slate-400 font-mono">{formatTime(currentTime)}</span>
+                    <span className="text-xs text-slate-400 font-mono">{formatTime(duration)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Playback Controls Row */}
+              <div className="flex items-center gap-3 sm:gap-4 w-full justify-between">
                 <button
                   onClick={togglePlay}
                   className="w-10 h-10 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-400 text-white transition-colors flex-shrink-0"
@@ -647,27 +724,49 @@ export default function VideoAnalysisTab() {
                     )}
                   </span>
                 </div>
-              </div>
 
-              <button
-                onClick={() => {
-                  setVideoUrl("");
-                  setVideoFile(null);
-                  setUploadedVideoId(null);
-                  setKeypointsData([]);
-                  setUploadStatus("");
-                  setError(null);
-                  setBedrockAnalytics(null);
-                  setIsProcessing(false);
-                  setWsEnabled(false);
-                  setViewMode('video');
-                  setIs3DPlaying(false);
-                }}
-                className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs sm:text-sm self-end sm:self-auto"
-              >
-                <RefreshCw size={14} />
-                <span>New Video</span>
-              </button>
+                {/* Playback Speed Controls - Only for video mode */}
+                {/* {viewMode === 'video' && (
+                  <div className="flex items-center gap-1.5 bg-slate-800 rounded-lg p-1">
+                    {[0.5, 0.75, 1, 1.5, 2].map((speed) => (
+                      <button
+                        key={speed}
+                        onClick={() => handlePlaybackSpeedChange(speed)}
+                        className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${playbackSpeed === speed
+                          ? 'bg-emerald-500 text-white'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                          }`}
+                      >
+                        {speed}x
+                      </button>
+                    ))}
+                  </div>
+                )} */}
+
+                {/* New Video Button Row */}
+                <button
+                  onClick={() => {
+                    setVideoUrl("");
+                    setVideoFile(null);
+                    setUploadedVideoId(null);
+                    setKeypointsData([]);
+                    setUploadStatus("");
+                    setError(null);
+                    setBedrockAnalytics(null);
+                    setIsProcessing(false);
+                    setWsEnabled(false);
+                    setViewMode('video');
+                    setIs3DPlaying(false);
+                    setPlaybackSpeed(1);
+                    setCurrentTime(0);
+                    setDuration(0);
+                  }}
+                  className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs sm:text-sm w-full sm:w-auto justify-center"
+                >
+                  <RefreshCw size={14} />
+                  <span>New Video</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
