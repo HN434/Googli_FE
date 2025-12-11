@@ -14,10 +14,10 @@ export default function FeaturesTabs() {
   const [activeTab, setActiveTab] = useState<TabType>("commentary");
 
   const tabs = [
-    { id: "commentary" as TabType, label: "Commentary", icon: Mic },
-    { id: "multimodel-chat" as TabType, label: "Multimodel Chat", icon: MessageSquareText },
-    { id: "video" as TabType, label: "Video Analysis", icon: Video },
-    { id: "3d-replay-video" as TabType, label: "3D Replay Video", icon: Box },
+    { id: "commentary" as TabType, label: "ball-by-ball Live Commentary", icon: Mic },
+    // { id: "multimodel-chat" as TabType, label: "Multimodel Chat", icon: MessageSquareText },
+    { id: "video" as TabType, label: "Video Analysis & 3D Replay", icon: Video },
+    // { id: "3d-replay-video" as TabType, label: "3D Replay Video", icon: Box },
     // { id: "3d-video" as TabType, label: "3D Video", icon: Box },
   ];
 
@@ -48,7 +48,7 @@ export default function FeaturesTabs() {
         <div className="min-h-[300px] sm:min-h-[400px]">
           {activeTab === "video" && <VideoAnalysisTab />}
           {activeTab === "commentary" && <CommentaryTab />}
-          {activeTab === "3d-replay-video" && <PredictionsTab />}
+          {/* {activeTab === "3d-replay-video" && <PredictionsTab />} */}
           {activeTab === "multimodel-chat" && <MultiModelChat />}
           {/* {activeTab === "3d-video" && <ThreeDVideo />} */}
         </div>

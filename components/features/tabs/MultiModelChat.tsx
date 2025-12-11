@@ -53,7 +53,7 @@ export default function MultiModelChat() {
     // Voice settings
     const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
         enabled: false,
-        language: 'English',
+        language: 'UK-EN',
         gender: 'Female',
         persona: 'Professional'
     });
@@ -585,7 +585,7 @@ export default function MultiModelChat() {
                                 disabled={!voiceSettings.enabled}
                                 className="w-full px-3 py-2 text-sm bg-gray-800/80 text-white rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             >
-                                <option value="English">English</option>
+                                <option value="UK-EN">English</option>
                                 <option value="Hindi">Hindi</option>
                                 <option value="Tamil">Tamil</option>
                                 <option value="Telugu">Telugu</option>
@@ -621,10 +621,10 @@ export default function MultiModelChat() {
                     </div>
                 </div>
             </div>
-            
+
             {/* Backdrop overlay when settings open */}
             {showSettings && (
-                <div 
+                <div
                     className="absolute inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300"
                     onClick={() => setShowSettings(false)}
                 />
