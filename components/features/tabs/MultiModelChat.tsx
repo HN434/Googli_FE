@@ -305,7 +305,7 @@ export default function MultiModelChat() {
     };
 
     return (
-        <div className="flex h-[600px] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl overflow-hidden shadow-2xl relative">
+        <div className="flex h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl overflow-hidden shadow-2xl relative">
             {/* Chat History Sidebar */}
             <div className={`${showHistory ? 'w-64' : 'w-0'} transition-all duration-300 bg-slate-900/50 border-r border-slate-700/50 flex flex-col overflow-hidden`}>
                 <div className="p-4 border-b border-slate-700/50">

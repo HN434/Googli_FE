@@ -35,6 +35,7 @@ interface QueueItem {
     text: string;
     language: string;
     gender: string;
+    tone: string;
 }
 
 interface Commentary {
@@ -163,17 +164,27 @@ class PollyService {
 
     /**
      * Get available voices based on language and gender
+     * Updated for English, Spanish, and Hindi
      */
     getVoiceId(language: string = 'English', gender: string = 'Male'): string {
         const voiceMap: Record<string, string> = {
+            // English voices
             'English-Male': 'Matthew',
             'English-Female': 'Joanna',
-            'Hindi-Male': 'Aditi', // Aditi supports both standard (no male Hindi voice available)
-            'Hindi-Female': 'Aditi',
-            'Tamil-Male': 'Raveena', // Using Indian English voice (no native Tamil voice)
-            'Tamil-Female': 'Raveena',
-            'Telugu-Male': 'Raveena', // Using Indian English voice (no native Telugu voice)
-            'Telugu-Female': 'Raveena',
+
+            // Spanish voices
+            'Spanish-Male': 'Miguel',      // Standard engine, Spanish (US)
+            'Spanish-Female': 'Lupe',      // Standard engine, Spanish (US)
+
+            // Hindi voices
+            'Hindi-Male': 'Aditi',         // Standard engine (supports both genders)
+            'Hindi-Female': 'Kajal',       // Neural engine
+
+            // Fallback for Tamil/Telugu if needed
+            'Tamil-Male': 'Aditi',
+            'Tamil-Female': 'Aditi',
+            'Telugu-Male': 'Aditi',
+            'Telugu-Female': 'Aditi',
         };
 
         const key = `${language}-${gender}`;
@@ -186,12 +197,52 @@ class PollyService {
     }
 
     /**
+     * Check if voice supports Neural engine
+     */
+    private supportsNeuralEngine(voiceId: string): boolean {
+        // Neural-compatible voices
+        const neuralVoices = [
+            'Matthew', 'Joanna',  // English
+            'Kajal'                // Hindi (female only)
+        ];
+
+        return neuralVoices.includes(voiceId);
+    }
+
+    /**
+     * Generate SSML with prosody tags for tone control
+     * NOTE: Only works with Standard engine, not Neural
+     */
+    private getToneSSML(text: string, tone: string = 'Professional'): string {
+        // Escape special XML characters
+        const escapedText = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+
+        // Standard engine supports percentage values for rate/pitch
+        const toneSettings: Record<string, { rate: string; pitch: string }> = {
+            'Calm': { rate: '85%', pitch: '-5%' },
+            'Exciting': { rate: '120%', pitch: '+10%' },
+            'Professional': { rate: '100%', pitch: '+0%' },
+            'Dramatic': { rate: '105%', pitch: '+15%' }
+        };
+
+        const settings = toneSettings[tone] || toneSettings['Professional'];
+
+        return `<speak><prosody rate="${settings.rate}" pitch="${settings.pitch}">${escapedText}</prosody></speak>`;
+    }
+
+    /**
      * Convert text to speech using AWS Polly
      */
     async speakWithPolly(
         text: string,
         language: string = 'English',
-        gender: string = 'Male'
+        gender: string = 'Male',
+        tone: string = 'Professional'
     ): Promise<void> {
         console.log('[Polly] speakWithPolly called');
         console.log('[Polly] Initialized:', this.initialized);
@@ -209,42 +260,49 @@ class PollyService {
             console.log('[Polly] ✅ AWS Polly is initialized, using AWS Polly');
             console.log('[Polly] AWS Polly speaking:', text.substring(0, 50), 'Language:', language);
 
-            // Translate text if not English using AWS Translate
-            if (language !== 'English') {
-                const originalText = text;
-                text = await this.translateText(text, language);
-                console.log('[Polly] AWS Translated from:', originalText.substring(0, 30));
-                console.log('[Polly] AWS Translated to:', text.substring(0, 30));
-            }
-
             const voiceId = this.getVoiceId(language, gender);
-            console.log('[Polly] Using AWS Polly voice:', voiceId);
+            console.log('[Polly] Using AWS Polly voice:', voiceId, 'with tone:', tone);
 
-            // Try with neural engine first, fall back to standard if not supported
-            let params: PollyParams = {
-                Text: text,
-                OutputFormat: 'mp3',
-                VoiceId: voiceId,
-                Engine: 'neural', // Use neural engine for better quality
-                TextType: 'text',
-            };
+            // Determine which engine to use based on voice and tone requirements
+            const useNeuralEngine = this.supportsNeuralEngine(voiceId) && tone === 'Professional';
+            const engine = useNeuralEngine ? 'neural' : 'standard';
 
-            let data: PollyResponse;
-            try {
-                data = await this.polly.synthesizeSpeech(params).promise();
-            } catch (neuralError: any) {
-                if (neuralError.message && neuralError.message.includes('does not support')) {
-                    // Retry with standard engine
-                    console.log('[Polly] Neural engine not supported for this voice, using standard engine');
-                    params.Engine = 'standard';
-                    data = await this.polly.synthesizeSpeech(params).promise();
-                } else {
-                    throw neuralError;
-                }
+            console.log('[Polly] Using engine:', engine);
+
+            let params: PollyParams;
+
+            // Neural engine: Use plain text (no SSML prosody support)
+            // Standard engine: Use SSML with prosody for tone control
+            if (engine === 'neural') {
+                params = {
+                    Text: text,
+                    OutputFormat: 'mp3',
+                    VoiceId: voiceId,
+                    Engine: 'neural',
+                    TextType: 'text',
+                };
+                console.log('[Polly] Using Neural engine with plain text');
+            } else {
+                // Generate SSML with tone-based prosody for standard engine
+                const ssmlText = this.getToneSSML(text, tone);
+                console.log('[Polly] Generated SSML:', ssmlText.substring(0, 100));
+
+                params = {
+                    Text: ssmlText,
+                    OutputFormat: 'mp3',
+                    VoiceId: voiceId,
+                    Engine: 'standard',
+                    TextType: 'ssml',
+                };
+                console.log('[Polly] Using Standard engine with SSML prosody');
             }
+
+            const data: PollyResponse = await this.polly.synthesizeSpeech(params).promise();
 
             // Create audio from the response
-            const audioBlob = new Blob([data.AudioStream], { type: 'audio/mpeg' });
+            // Convert to Uint8Array with ArrayBuffer to satisfy TypeScript's Blob type requirements
+            const audioData = new Uint8Array(data.AudioStream);
+            const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
             const audioUrl = URL.createObjectURL(audioBlob);
 
             console.log('[Polly] AWS Polly audio generated successfully');
@@ -283,6 +341,7 @@ class PollyService {
 
                 const languageCodeMap: Record<string, string> = {
                     Hindi: 'hi',
+                    Spanish: 'es',
                     Tamil: 'ta',
                     Telugu: 'te',
                 };
@@ -314,8 +373,7 @@ class PollyService {
             '[Polly] AWS Translate not configured. For full translation, add translate:TranslateText permission to your IAM policy.'
         );
 
-        // For Hindi/Tamil/Telugu browser speech, keep English text but make it more natural
-        // Browser will use Hindi/Tamil/Telugu voice to read English text with native accent
+        // For Hindi/Spanish browser speech, keep English text with phonetic adjustments
         if (targetLanguage === 'Hindi') {
             // Replace cricket terms with phonetic Hindi for better pronunciation
             text = text.replace(/\bfour runs\b/gi, 'chaar runs');
@@ -324,12 +382,6 @@ class PollyService {
             text = text.replace(/\bsix\b/gi, 'chhakka');
             text = text.replace(/\bout\b/gi, 'out');
             text = text.replace(/\bwicket\b/gi, 'wicket');
-            text = text.replace(/\bbowled\b/gi, 'bowled');
-            text = text.replace(/\bcaught\b/gi, 'catch out');
-            text = text.replace(/\bdelivery\b/gi, 'ball');
-            text = text.replace(/\bover\b/gi, 'over');
-            text = text.replace(/\bruns\b/gi, 'runs');
-            text = text.replace(/\bdot ball\b/gi, 'dot ball');
         }
 
         console.log('[Polly] Romanization result (English text will be spoken with native accent)');
@@ -339,22 +391,14 @@ class PollyService {
     /**
      * Convert text to speech using browser's Web Speech API (fallback)
      */
-    async speakWithBrowser(text: string, language: string = 'English'): Promise<void> {
+    async speakWithBrowser(text: string, language: string = 'English', tone: string = 'Professional'): Promise<void> {
         if (typeof window === 'undefined' || !window.speechSynthesis) {
             console.error('[Polly] Browser speech synthesis not supported');
             throw new Error('Browser speech synthesis not supported');
         }
 
         try {
-            console.log('[Polly] Using browser speech for:', text.substring(0, 50), 'Language:', language);
-
-            // Translate if not English (AWS Translate will be used if available, otherwise romanization)
-            if (language !== 'English') {
-                const originalText = text;
-                text = await this.translateText(text, language);
-                console.log('[Polly] Translated from:', originalText.substring(0, 30));
-                console.log('[Polly] Translated to:', text.substring(0, 30));
-            }
+            console.log('[Polly] Using browser speech for:', text.substring(0, 50), 'Language:', language, 'Tone:', tone);
 
             // Cancel any ongoing speech
             window.speechSynthesis.cancel();
@@ -367,6 +411,7 @@ class PollyService {
             // Set language
             const langMap: Record<string, string> = {
                 English: 'en-US',
+                Spanish: 'es-ES',
                 Hindi: 'hi-IN',
                 Tamil: 'ta-IN',
                 Telugu: 'te-IN',
@@ -407,10 +452,20 @@ class PollyService {
                     console.warn('[Polly] No voices available, using browser default');
                 }
 
-                // Set voice parameters - maximize volume
-                utterance.rate = 1.0;
-                utterance.pitch = 1.0;
-                utterance.volume = 1.0; // Max volume
+                // Set voice parameters based on tone
+                const toneSettings: Record<string, { rate: number; pitch: number; volume: number }> = {
+                    'Calm': { rate: 0.85, pitch: 0.95, volume: 0.8 },
+                    'Exciting': { rate: 1.2, pitch: 1.1, volume: 1.0 },
+                    'Professional': { rate: 1.0, pitch: 1.0, volume: 0.9 },
+                    'Dramatic': { rate: 1.05, pitch: 1.15, volume: 1.0 }
+                };
+
+                const settings = toneSettings[tone] || toneSettings['Professional'];
+                utterance.rate = settings.rate;
+                utterance.pitch = settings.pitch;
+                utterance.volume = settings.volume;
+
+                console.log('[Polly] Tone settings applied:', tone, settings);
 
                 utterance.onstart = () => {
                     console.log('[Polly] Browser speech started');
@@ -494,8 +549,8 @@ class PollyService {
     /**
      * Add commentary to speech queue
      */
-    queueCommentary(text: string, language: string = 'English', gender: string = 'Male'): void {
-        this.queue.push({ text, language, gender });
+    queueCommentary(text: string, language: string = 'English', gender: string = 'Male', tone: string = 'Professional'): void {
+        this.queue.push({ text, language, gender, tone });
 
         if (!this.isPlaying) {
             this.processQueue();
@@ -517,9 +572,9 @@ class PollyService {
         if (item) {
             try {
                 if (this.polly) {
-                    await this.speakWithPolly(item.text, item.language, item.gender);
+                    await this.speakWithPolly(item.text, item.language, item.gender, item.tone);
                 } else {
-                    await this.speakWithBrowser(item.text, item.language);
+                    await this.speakWithBrowser(item.text, item.language, item.tone);
                 }
             } catch (error) {
                 console.error('Error processing speech queue:', error);
@@ -552,13 +607,13 @@ class PollyService {
 
     /**
      * Clean and format text for better speech output
-     * IMPORTANT: Preserve Unicode characters for Hindi/Tamil/Telugu
+     * IMPORTANT: Preserve Unicode characters for Hindi/Spanish
      */
     formatTextForSpeech(text: string): string {
         // Convert to string if not already
         text = String(text || '');
 
-        // Remove only emojis (but keep Hindi/Tamil/Telugu/Devanagari text)
+        // Remove only emojis (but keep Hindi/Spanish/Devanagari text)
         text = text.replace(/[\u{1F000}-\u{1F9FF}]/gu, ''); // Emoticons
         text = text.replace(/[\u{2600}-\u{27BF}]/gu, ''); // Misc symbols (but not Devanagari)
         text = text.replace(/[\u{1F300}-\u{1F5FF}]/gu, ''); // Misc symbols & pictographs
@@ -570,8 +625,7 @@ class PollyService {
 
         // IMPORTANT: DO NOT remove non-ASCII characters!
         // Hindi (Devanagari): U+0900–U+097F
-        // Tamil: U+0B80–U+0BFF
-        // Telugu: U+0C00–U+0C7F
+        // Spanish: Standard Latin characters with accents
         // We want to KEEP these characters for proper speech synthesis!
 
         // Only remove specific special formatting characters that cause speech issues
@@ -596,6 +650,7 @@ class PollyService {
         commentary: string | Commentary,
         language: string = 'English',
         gender: string = 'Male',
+        tone: string = 'Professional',
         onComplete?: () => void
     ): Promise<void> {
         let text = typeof commentary === 'string' ? commentary : commentary.text || '';
@@ -617,9 +672,9 @@ class PollyService {
         if (onComplete) {
             try {
                 if (this.polly) {
-                    await this.speakWithPolly(text, language, gender);
+                    await this.speakWithPolly(text, language, gender, tone);
                 } else {
-                    await this.speakWithBrowser(text, language);
+                    await this.speakWithBrowser(text, language, tone);
                 }
                 onComplete();
             } catch (error) {
@@ -628,7 +683,7 @@ class PollyService {
             }
         } else {
             // Queue the commentary (old behavior)
-            this.queueCommentary(text, language, gender);
+            this.queueCommentary(text, language, gender, tone);
         }
     }
 
