@@ -51,12 +51,7 @@ interface FileData {
     timestamp: number;
 }
 
-interface VoiceSettings {
-    enabled: boolean;
-    language: string;
-    gender: string;
-    persona: string;
-}
+
 
 interface ChatHistory {
     id: string;
@@ -82,12 +77,14 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
     const [chatHistory, setChatHistory] = useState<ChatHistory[]>([]);
     const [currentChatId, setCurrentChatId] = useState<string | null>(null);
     const [showSettings, setShowSettings] = useState(false);
-    const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
-        enabled: false,
-        language: 'English',
-        gender: 'Female',
-        persona: 'Normal'
-    });
+
+    // Voice Settings (matching CommentaryTab pattern)
+    const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
+    const [commentaryLanguage, setCommentaryLanguage] = useState('English');
+    const [commentaryTone, setCommentaryTone] = useState('Professional');
+    const [commentaryVoice, setCommentaryVoice] = useState('Female');
+    const [audioService, setAudioService] = useState('Browser Speech Synthesis');
+
     const [sessionId, setSessionId] = useState<string>(generateSessionId());
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -112,6 +109,11 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
 
         initServices();
     }, []);
+
+    // Track audio service (matching CommentaryTab pattern)
+    useEffect(() => {
+        setAudioService(pollyService.getAudioServiceName());
+    }, [isVoiceEnabled]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -146,8 +148,8 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                 uploadedFiles,
                 messages,
                 sessionId,
-                voiceSettings.language,
-                voiceSettings.persona // persona is the tone
+                commentaryLanguage,
+                commentaryTone // persona is the tone
             );
 
             // Create bot message with complete text
@@ -165,13 +167,14 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
             setMessages([...newMessages, botMessage]);
 
             // If voice is enabled, speak first then start typewriter
-            if (voiceSettings.enabled && response.message) {
+            if (isVoiceEnabled && response.message) {
                 try {
                     // Wait for Polly to finish speaking
                     await pollyService.speakCommentary(
                         response.message,
-                        voiceSettings.language,
-                        voiceSettings.gender
+                        commentaryLanguage,
+                        commentaryVoice,
+                        commentaryTone // tone parameter
                     );
                 } catch (voiceErr) {
                     console.error('Voice synthesis error:', voiceErr);
@@ -613,54 +616,52 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input
                                 type="checkbox"
-                                checked={voiceSettings.enabled}
-                                onChange={(e) => setVoiceSettings(prev => ({ ...prev, enabled: e.target.checked }))}
+                                checked={isVoiceEnabled}
+                                onChange={(e) => setIsVoiceEnabled(e.target.checked)}
                                 className="sr-only peer"
                             />
                             <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-400/30 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-400 peer-checked:to-teal-500"></div>
                         </label>
                     </div>
 
+                    {/* Commentary Settings - matching CommentaryTab structure */}
                     <div className="grid grid-cols-3 gap-2">
                         <div>
                             <label className="text-xs font-medium text-slate-400 block mb-1">Language</label>
                             <select
-                                value={voiceSettings.language}
-                                onChange={(e) => setVoiceSettings(prev => ({ ...prev, language: e.target.value }))}
-                                disabled={!voiceSettings.enabled}
-                                className="w-full px-2 py-1.5 text-xs bg-slate-800/80 text-white rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                value={commentaryLanguage}
+                                onChange={(e) => setCommentaryLanguage(e.target.value)}
+                                className="w-full px-2 py-1.5 text-xs bg-slate-800/80 text-white rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition-all"
                             >
                                 <option value="English">English</option>
                                 <option value="Hindi">Hindi</option>
-                                <option value="Tamil">Tamil</option>
-                                <option value="Telugu">Telugu</option>
+                                <option value="Spanish">Spanish</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-medium text-slate-400 block mb-1">Tone</label>
+                            <select
+                                value={commentaryTone}
+                                onChange={(e) => setCommentaryTone(e.target.value)}
+                                className="w-full px-2 py-1.5 text-xs bg-slate-800/80 text-white rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition-all"
+                            >
+                                <option value="Calm">Calm</option>
+                                <option value="Exciting">Excited</option>
+                                <option value="Professional">Professional</option>
+                                <option value="Dramatic">Dramatic</option>
                             </select>
                         </div>
 
                         <div>
                             <label className="text-xs font-medium text-slate-400 block mb-1">Voice</label>
                             <select
-                                value={voiceSettings.gender}
-                                onChange={(e) => setVoiceSettings(prev => ({ ...prev, gender: e.target.value }))}
-                                disabled={!voiceSettings.enabled}
-                                className="w-full px-2 py-1.5 text-xs bg-slate-800/80 text-white rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                value={commentaryVoice}
+                                onChange={(e) => setCommentaryVoice(e.target.value)}
+                                className="w-full px-2 py-1.5 text-xs bg-slate-800/80 text-white rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition-all"
                             >
-                                <option value="Female">Female</option>
                                 <option value="Male">Male</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="text-xs font-medium text-slate-400 block mb-1">Persona</label>
-                            <select
-                                value={voiceSettings.persona}
-                                onChange={(e) => setVoiceSettings(prev => ({ ...prev, persona: e.target.value }))}
-                                disabled={!voiceSettings.enabled}
-                                className="w-full px-2 py-1.5 text-xs bg-slate-800/80 text-white rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                            >
-                                <option value="Normal">Normal</option>
-                                <option value="Casual">Casual</option>
-                                <option value="Enthusiastic">Enthusiastic</option>
+                                <option value="Female">Female</option>
                             </select>
                         </div>
                     </div>
