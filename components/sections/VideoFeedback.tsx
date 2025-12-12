@@ -32,9 +32,9 @@ export default function VideoFeedback() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
+        <div className="flex justify-center items-center w-full">
           {/* Upload Section */}
-          <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-10 hover:border-emerald-500/30 transition-all">
+          {/* <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-10 hover:border-emerald-500/30 transition-all">
             <div className="text-center mb-8">
               <div className="w-20 h-20 bg-emerald-500/10 border-2 border-emerald-500 rounded-full mx-auto mb-6 flex items-center justify-center">
                 <Upload className="w-10 h-10 text-emerald-500" />
@@ -52,11 +52,11 @@ export default function VideoFeedback() {
             <p className="text-gray-500 text-xs text-center mt-4">
               Supports MP4, MOV, AVI up to 100MB
             </p>
-          </div>
+          </div> */}
 
           {/* AI Feedback Preview */}
-          <div>
-            <h3 className="text-white font-semibold text-2xl mb-6">
+          <div className="w-full max-w-2xl">
+            <h3 className="text-white font-semibold text-2xl mb-6 text-center">
               AI Feedback Preview
             </h3>
             <div className="space-y-4">
