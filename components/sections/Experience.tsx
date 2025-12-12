@@ -1,4 +1,4 @@
-import { Mic, Video, TrendingUp } from "lucide-react";
+import { Mic, Video, MessageSquare } from "lucide-react";
 
 export default function Experience() {
   return (
@@ -12,7 +12,7 @@ export default function Experience() {
             An intuitive and powerful interface designed for players, coaches and fans.
           </p>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Live Commentary Card */}
           <div className="bg-[#0a1628] border border-gray-800 rounded-xl p-6 hover:border-emerald-500/30 transition-all">
@@ -20,9 +20,9 @@ export default function Experience() {
               <Mic className="w-4 h-4 text-emerald-400" />
               <span className="text-emerald-400 text-xs font-medium uppercase tracking-wide">Live Commentary</span>
             </div>
-            
+
             <div className="mb-6">
-              <div className="flex items-center gap-3 mb-4">
+              {/* <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
                   HB
                 </div>
@@ -30,8 +30,8 @@ export default function Experience() {
                   <div className="text-white text-sm font-medium">Harsha B.</div>
                   <div className="text-gray-500 text-xs">Expert - Cricket</div>
                 </div>
-              </div>
-              
+              </div> */}
+
               {/* Audio Waveform Visualization */}
               <div className="flex items-end gap-1 h-20 mb-4">
                 {[4, 8, 6, 12, 10, 14, 16, 12, 18, 14, 10, 16, 12, 8, 14, 10, 6, 12, 8, 10, 14, 12, 16, 10, 8, 12, 14, 10, 6, 8].map((height, i) => (
@@ -58,7 +58,7 @@ export default function Experience() {
               <Video className="w-4 h-4 text-emerald-400" />
               <span className="text-emerald-400 text-xs font-medium uppercase tracking-wide">Video Analysis</span>
             </div>
-            
+
             {/* Ball Trajectory Visualization */}
             <div className="relative bg-[#0f1f3a] rounded-lg p-6 mb-6 h-48 flex items-center justify-center">
               <svg viewBox="0 0 200 150" className="w-full h-full">
@@ -113,73 +113,81 @@ export default function Experience() {
             </div>
           </div>
 
-          {/* Predictions Card */}
+          {/* Multimodal Chatbot Card */}
           <div className="bg-[#0a1628] border border-gray-800 rounded-xl p-6 hover:border-emerald-500/30 transition-all">
             <div className="flex items-center gap-2 mb-6">
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
-              <span className="text-emerald-400 text-xs font-medium uppercase tracking-wide">Predictions</span>
+              <MessageSquare className="w-4 h-4 text-emerald-400" />
+              <span className="text-emerald-400 text-xs font-medium uppercase tracking-wide">AI Assistant</span>
             </div>
-            
-            <div className="space-y-6">
-              {/* Match Predictions */}
-              <div>
-                <div className="flex justify-between items-center mb-3">
-                  <div>
-                    <div className="text-gray-400 text-xs mb-1">IND</div>
-                    <div className="text-gray-500 text-xs">Win Prob.</div>
-                  </div>
-                  <div className="text-white text-2xl font-bold">62%</div>
-                </div>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="text-gray-400 text-xs mb-1">AUS</div>
-                    <div className="text-gray-500 text-xs">Win Prob.</div>
-                  </div>
-                  <div className="text-white text-2xl font-bold">38%</div>
+
+            {/* Chat Interface Mockup */}
+            <div className="space-y-3 mb-6">
+              {/* User Message */}
+              <div className="flex justify-end">
+                <div className="bg-emerald-500/20 border border-emerald-500/30 rounded-lg rounded-tr-none px-3 py-2 max-w-[80%]">
+                  <p className="text-xs text-emerald-200">How can I improve my cover drive?</p>
                 </div>
               </div>
 
-              {/* Momentum Chart */}
-              <div className="pt-6 border-t border-gray-800">
-                <div className="text-gray-400 text-xs mb-3">Momentum</div>
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs text-gray-500">IND</span>
-                  <div className="flex-1 flex gap-1">
-                    {[...Array(10)].map((_, i) => (
-                      <div
-                        key={i}
-                        className={`flex-1 h-2 rounded-full ${
-                          i < 6 ? 'bg-emerald-500' : 'bg-gray-700'
-                        }`}
-                      />
-                    ))}
+              {/* AI Response */}
+              <div className="flex justify-start">
+                <div className="bg-slate-800 border border-gray-700 rounded-lg rounded-tl-none px-3 py-2 max-w-[85%]">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-5 h-5 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full flex items-center justify-center">
+                      <span className="text-white text-[8px] font-bold">AI</span>
+                    </div>
+                    <span className="text-[10px] text-gray-500">Cricket Expert</span>
                   </div>
-                  <span className="text-xs text-gray-500">AUS</span>
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    Focus on these key points:
+                  </p>
+                  <ul className="text-xs text-gray-400 space-y-1 mt-2 ml-2">
+                    <li className="flex items-start gap-1">
+                      <span className="text-emerald-400 mt-0.5">•</span>
+                      <span>Keep your head still through the shot</span>
+                    </li>
+                    <li className="flex items-start gap-1">
+                      <span className="text-emerald-400 mt-0.5">•</span>
+                      <span>Transfer weight onto front foot</span>
+                    </li>
+                    <li className="flex items-start gap-1">
+                      <span className="text-emerald-400 mt-0.5">•</span>
+                      <span>High elbow position at contact</span>
+                    </li>
+                  </ul>
                 </div>
               </div>
 
-              {/* Pressure Index */}
-              <div className="pt-6 border-t border-gray-800">
-                <div className="text-gray-400 text-xs mb-4 text-center">Pressure Index</div>
-                <div className="relative w-32 h-32 mx-auto">
-                  <svg className="transform -rotate-90" viewBox="0 0 120 120">
-                    <circle cx="60" cy="60" r="50" fill="none" stroke="#1f2937" strokeWidth="12" />
-                    <circle 
-                      cx="60" 
-                      cy="60" 
-                      r="50" 
-                      fill="none" 
-                      stroke="#ef4444" 
-                      strokeWidth="12" 
-                      strokeDasharray="314" 
-                      strokeDashoffset="78.5"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-3xl font-bold text-white">75</span>
-                  </div>
+              {/* User Follow-up */}
+              <div className="flex justify-end">
+                <div className="bg-emerald-500/20 border border-emerald-500/30 rounded-lg rounded-tr-none px-3 py-2 max-w-[75%]">
+                  <p className="text-xs text-emerald-200">Show me a drill</p>
                 </div>
+              </div>
+
+              {/* AI Response with drill */}
+              <div className="flex justify-start">
+                <div className="bg-slate-800 border border-gray-700 rounded-lg rounded-tl-none px-3 py-2 max-w-[85%]">
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    Try the "One-Knee Drive Drill" - practice the shot from a kneeling position to focus on upper body mechanics.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Feature Highlights */}
+            <div className="pt-4 border-t border-gray-800 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
+                <p className="text-xs text-gray-400">Multimodal input (text, images, voice)</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
+                <p className="text-xs text-gray-400">Real-time cricket expertise</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
+                <p className="text-xs text-gray-400">Personalized training advice</p>
               </div>
             </div>
           </div>

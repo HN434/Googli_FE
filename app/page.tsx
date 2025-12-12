@@ -24,16 +24,16 @@ export default function Home() {
   // redirect('/features');
   // Commented out - Original home page content
   return (
-    // <main className="min-h-screen" suppressHydrationWarning>
-    //   <Hero />
-    //   <Stats />
-    //   <Experience />
-    //   <KeyFeatures />
-    //   <VideoFeedback />
-    // </main>
-    <main className="min-h-screen bg-gray-900">
-      <FeaturesHero />
-      <FeaturesTabs />
+    <main className="min-h-screen" suppressHydrationWarning>
+      <Hero />
+      <Stats />
+      <Experience />
+      <KeyFeatures />
+      <VideoFeedback />
     </main>
+    // <main className="min-h-screen bg-gray-900">
+    //   <FeaturesHero />
+    //   <FeaturesTabs />
+    // </main>
   );
 }

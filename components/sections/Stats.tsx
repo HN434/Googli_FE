@@ -1,7 +1,7 @@
 export default function Stats() {
   const stats = [
     { value: "10s", label: "Real-time video delay" },
-    { value: "3+", label: "Languages of video support output" },
+    { value: "3", label: "Languages of video support output" },
     { value: "98%", label: "Match image accuracy" },
   ];
 
