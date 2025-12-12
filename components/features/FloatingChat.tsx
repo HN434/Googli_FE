@@ -766,6 +766,8 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                                                 {msg.displayedText || msg.text || ''}
                                             </ReactMarkdown>
                                         </div>
+                                    ) : msg.type === 'error' ? (
+                                        <p className="leading-relaxed whitespace-pre-wrap">Encountered an error, please try again.</p>
                                     ) : (
                                         <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                                     )}
@@ -806,7 +808,6 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                         multiple
                         className="hidden"
                     />
-
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isLoading || isProcessingFile}

@@ -305,12 +305,64 @@ export default function VideoAnalysisTab() {
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setVideoFile(file);
-      const url = URL.createObjectURL(file);
-      setVideoUrl(url);
+      // Reset previous errors
+      setError(null);
 
-      // Upload to API
-      uploadVideo(file);
+      // Validate file size (50 MB = 50 * 1024 * 1024 bytes)
+      const maxSizeInBytes = 50 * 1024 * 1024;
+      if (file.size > maxSizeInBytes) {
+        setError('Video file size must not exceed 50 MB. Please upload a smaller file.');
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
+      const url = URL.createObjectURL(file);
+
+      // Create a temporary video element to check duration
+      const tempVideo = document.createElement('video');
+      tempVideo.preload = 'metadata';
+
+      tempVideo.onloadedmetadata = () => {
+        const duration = tempVideo.duration;
+
+        // Validate duration (10 to 60 seconds)
+        if (duration < 10) {
+          setError('Video duration must be at least 10 seconds. Please upload a longer video.');
+          URL.revokeObjectURL(url);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+          return;
+        }
+
+        if (duration > 60) {
+          setError('Video duration must not exceed 60 seconds (1 minute). Please upload a shorter video.');
+          URL.revokeObjectURL(url);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+          return;
+        }
+
+        // All validations passed - proceed with upload
+        // Note: We keep the blob URL alive here because the video player needs it
+        setVideoFile(file);
+        setVideoUrl(url);
+        uploadVideo(file);
+      };
+
+      tempVideo.onerror = () => {
+        setError('Failed to load video. Please ensure the file is a valid video format.');
+        URL.revokeObjectURL(url);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      };
+
+      tempVideo.src = url;
     }
   };
 
@@ -566,30 +618,62 @@ export default function VideoAnalysisTab() {
 
         {!videoUrl ? (
           // Upload State
-          <div
-            onClick={() => !isUploading && fileInputRef.current?.click()}
-            className={`h-64 sm:h-80 md:h-96 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 m-3 sm:m-4 rounded-xl ${isUploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-emerald-500 hover:bg-slate-800/50'
-              } transition-all group`}
-          >
-            <div className="bg-slate-800 p-3 sm:p-4 rounded-full mb-3 sm:mb-4 group-hover:scale-110 transition-transform">
-              {isUploading ? (
-                <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-400 animate-spin" />
-              ) : (
-                <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-400" />
-              )}
+          <div className="m-3 sm:m-4">
+            <div
+              onClick={() => !isUploading && fileInputRef.current?.click()}
+              className={`h-56 sm:h-64 md:h-72 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 rounded-xl ${isUploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-emerald-500 hover:bg-slate-800/50'
+                } transition-all group`}
+            >
+              <div className="bg-slate-800 p-3 sm:p-4 rounded-full mb-3 sm:mb-4 group-hover:scale-110 transition-transform">
+                {isUploading ? (
+                  <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-400 animate-spin" />
+                ) : (
+                  <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-400" />
+                )}
+              </div>
+              <p className="text-sm sm:text-base text-white font-medium px-4 text-center">
+                {isUploading ? 'Uploading...' : 'Upload Cricket Video'}
+              </p>
+              <p className="text-slate-500 text-xs sm:text-sm mt-1 px-4 text-center">MP4, MOV or AVI</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/*"
+                onChange={handleVideoUpload}
+                className="hidden"
+                disabled={isUploading}
+              />
             </div>
-            <p className="text-sm sm:text-base text-white font-medium px-4 text-center">
-              {isUploading ? 'Uploading...' : 'Upload Cricket Video'}
-            </p>
-            <p className="text-slate-500 text-xs sm:text-sm mt-1 px-4 text-center">MP4, MOV or AVI (Max 50MB)</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="video/*"
-              onChange={handleVideoUpload}
-              className="hidden"
-              disabled={isUploading}
-            />
+
+            {/* Validation Requirements Display */}
+            <div className="mt-4 bg-slate-800/50 border border-slate-700 rounded-lg p-3 sm:p-4">
+              <p className="text-slate-300 text-xs sm:text-sm font-semibold mb-2 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                Video Requirements
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-start gap-2">
+                  <div className="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center mt-0.5">
+                    <span className="text-emerald-400 text-xs font-bold">⏱</span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-slate-300 text-xs sm:text-sm">
+                      <span className="font-semibold text-emerald-400">Duration:</span> Between 10 to 60 seconds
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center mt-0.5">
+                    <span className="text-blue-400 text-xs font-bold">📦</span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-slate-300 text-xs sm:text-sm">
+                      <span className="font-semibold text-blue-400">File Size:</span> Maximum 50 MB
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         ) : (
           // Player State with Tabbed Views
