@@ -461,6 +461,15 @@ export default function VideoAnalysisTab() {
     };
   }, [videoUrl, renderLoop]);
 
+  // Restore playback speed when switching back to video view or when video loads
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && viewMode === 'video' && playbackSpeed !== 1) {
+      // Apply the stored playback speed to the video element
+      video.playbackRate = playbackSpeed;
+    }
+  }, [viewMode, playbackSpeed, videoUrl]);
+
   const togglePlay = () => {
     if (viewMode === '3d') {
       // Toggle 3D animation independently
@@ -809,9 +818,9 @@ export default function VideoAnalysisTab() {
                   </span>
                 </div>
 
-                {/* Playback Speed Controls - Only for video mode */}
-                {/* {viewMode === 'video' && (
-                  <div className="flex items-center gap-1.5 bg-slate-800 rounded-lg p-1">
+                {/* Playback Speed Controls - Inline for Desktop - Only for video mode */}
+                {viewMode === 'video' && (
+                  <div className="hidden md:flex items-center gap-1.5 bg-slate-800 rounded-lg p-1">
                     {[0.5, 0.75, 1, 1.5, 2].map((speed) => (
                       <button
                         key={speed}
@@ -825,7 +834,7 @@ export default function VideoAnalysisTab() {
                       </button>
                     ))}
                   </div>
-                )} */}
+                )}
 
                 {/* New Video Button Row */}
                 <button
@@ -851,6 +860,24 @@ export default function VideoAnalysisTab() {
                   <span>New Video</span>
                 </button>
               </div>
+
+              {/* Playback Speed Controls - Separate Row for Mobile - Only for video mode */}
+              {viewMode === 'video' && (
+                <div className="flex md:hidden items-center justify-center gap-1.5 bg-slate-800 rounded-lg p-1 w-full">
+                  {[0.5, 0.75, 1, 1.5, 2].map((speed) => (
+                    <button
+                      key={speed}
+                      onClick={() => handlePlaybackSpeedChange(speed)}
+                      className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${playbackSpeed === speed
+                        ? 'bg-emerald-500 text-white'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                        }`}
+                    >
+                      {speed}x
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
