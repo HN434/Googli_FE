@@ -14,7 +14,66 @@ import { scaleBatDetections, drawBatDetection } from "@/utils/batUtils";
 import { useVideoWebSocket } from "@/hooks/useVideoWebSocket";
 import ThreeDSkeletonView from "./ThreeDSkeletonView";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_BE_URL || "http://localhost:8000/api";
+const API_BASE_URL = (process.env.NEXT_PUBLIC_BE_URL || "http://localhost:8000/api").replace(/\/$/, "");
+
+const buildApiUrl = (path: string) => `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+
+const formatSeconds = (seconds?: number) => {
+  if (seconds === undefined || Number.isNaN(seconds)) return "-";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${mins}:${secs}`;
+};
+
+const normalizeAnalyticsPayload = (payload: any) => {
+  if (!payload) return null;
+
+  // If this already looks like a structured analytics object, just return it
+  if (typeof payload === "object" && payload !== null) {
+    if (payload.summary || payload.key_observations || payload.improvement_areas || payload.explanation) {
+      return payload;
+    }
+  }
+
+  if (typeof payload === "string") {
+    try {
+      return JSON.parse(payload);
+    } catch {
+      return null;
+    }
+  }
+  // Common Bedrock streaming wrappers
+  if (payload.content && Array.isArray(payload.content) && payload.content[0]?.text) {
+    try {
+      return JSON.parse(payload.content[0].text);
+    } catch {
+      return payload.content[0].text;
+    }
+  }
+  if (payload.data) {
+    const inner = payload.data;
+    // If Pegasus/Bedrock has wrapped JSON inside a "message" string, parse it
+    if (inner && typeof inner === "object" && typeof inner.message === "string") {
+      try {
+        return JSON.parse(inner.message);
+      } catch {
+        return inner;
+      }
+    }
+    return inner;
+  }
+  // Fallback: if we have a "message" string that looks like JSON, parse it
+  if (payload && typeof payload === "object" && typeof payload.message === "string") {
+    try {
+      return JSON.parse(payload.message);
+    } catch {
+      return payload;
+    }
+  }
+  return payload;
+};
 
 export default function VideoAnalysisTab() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -46,6 +105,8 @@ export default function VideoAnalysisTab() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
+  const isNonCricketVideo = bedrockAnalytics?.is_cricket_video === false;
+
 
   // WebSocket integration
   const { isConnected: wsConnected, isConnecting: wsConnecting, error: wsError } = useVideoWebSocket({
@@ -64,9 +125,8 @@ export default function VideoAnalysisTab() {
     }, [videoDuration]),
     onBedrockAnalytics: useCallback((analytics: any) => {
       console.log('Received Bedrock analytics via WebSocket', analytics);
-      // const textData = analytics.content[0].text;
-      // const analyticsData = JSON.parse(textData);
-      setBedrockAnalytics(analytics);
+      const normalized = normalizeAnalyticsPayload(analytics);
+      setBedrockAnalytics(normalized);
       setUploadStatus('Analysis complete!');
     }, []),
     onError: useCallback((errorMsg: string) => {
@@ -122,7 +182,7 @@ export default function VideoAnalysisTab() {
   // Fetch analysis data from API (JSON format only)
   const fetchAnalysisData = async (videoId: string): Promise<PoseFrame[] | null> => {
     try {
-      const url = `${API_BASE_URL}videos/${videoId}/analysis?format=json`;
+      const url = buildApiUrl(`/videos/${videoId}/analysis?format=json`);
       console.log('Fetching analysis from:', url);
 
       const response = await fetch(url);
@@ -156,7 +216,7 @@ export default function VideoAnalysisTab() {
   // Fetch bedrock analytics data from API
   const fetchBedrockAnalytics = async (videoId: string): Promise<any | null> => {
     try {
-      const url = `${API_BASE_URL}videos/${videoId}/bedrock-analytics`;
+      const url = buildApiUrl(`/videos/${videoId}/bedrock-analytics`);
       console.log('Fetching bedrock analytics from:', url);
 
       const response = await fetch(url);
@@ -175,16 +235,7 @@ export default function VideoAnalysisTab() {
       const responseData = await response.json();
       console.log('Raw bedrock analytics response:', responseData);
 
-      // Extract the stringified JSON from content[0].text
-      let analyticsData;
-      if (responseData.content && responseData.content[0] && responseData.content[0].text) {
-        // Parse the stringified JSON from content[0].text
-        const textData = responseData.content[0].text;
-        analyticsData = JSON.parse(textData);
-      } else {
-        // Fallback: try parsing the response directly
-        analyticsData = responseData;
-      }
+      const analyticsData = normalizeAnalyticsPayload(responseData);
 
       console.log('Parsed bedrock analytics:', analyticsData);
       return analyticsData;
@@ -227,6 +278,14 @@ export default function VideoAnalysisTab() {
     }
   }, [videoDuration, keypointsData.length, calculateFPS]);
 
+  // If Pegasus decides this is NOT a cricket video, force view back to video and disable 3D
+  useEffect(() => {
+    if (isNonCricketVideo && viewMode === '3d') {
+      setViewMode('video');
+      setIs3DPlaying(false);
+    }
+  }, [isNonCricketVideo, viewMode]);
+
   // Manual fetch analysis data
   const handleManualFetchAnalysis = async () => {
     if (!manualVideoId.trim()) {
@@ -267,26 +326,63 @@ export default function VideoAnalysisTab() {
   const uploadVideo = async (file: File) => {
     setIsUploading(true);
     setError(null);
-    setUploadStatus('Uploading video...');
+    setUploadStatus('Requesting upload slot...');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch(`${API_BASE_URL}videos/upload`, {
+      // 1) Ask backend for presigned URL
+      const presignResponse = await fetch(buildApiUrl('/videos/presigned-url'), {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type || 'video/mp4',
+          file_size_bytes: file.size,
+        }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+      if (!presignResponse.ok) {
+        const errorText = await presignResponse.text();
+        throw new Error(`Could not get upload URL: ${presignResponse.status} - ${errorText}`);
       }
 
-      const result = await response.json();
-      console.log('Upload response:', result);
+      const presignData = await presignResponse.json();
+      console.log('Presign response:', presignData);
+      setUploadedVideoId(presignData.video_id);
+      const presignedContentType = presignData.content_type || file.type || 'application/octet-stream';
 
-      setUploadedVideoId(result.video_id);
+      // 2) Upload directly to S3 using the presigned URL
+      setUploadStatus('Uploading to secure storage...');
+      const uploadResponse = await fetch(presignData.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': presignedContentType },
+        body: file,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Cloud upload failed: ${uploadResponse.status} - ${errorText}`);
+      }
+
+      // 3) Tell backend the upload is complete so it can enqueue analysis
+      setUploadStatus('Finalising upload...');
+      const completeResponse = await fetch(buildApiUrl('/videos/upload-complete'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: presignData.video_id,
+          file_size_bytes: file.size,
+          checksum: undefined,
+        }),
+      });
+
+      if (!completeResponse.ok) {
+        const errorText = await completeResponse.text();
+        throw new Error(`Failed to confirm upload: ${completeResponse.status} - ${errorText}`);
+      }
+
+      const completeData = await completeResponse.json();
+      console.log('Upload-complete response:', completeData);
+
       setUploadStatus('Upload complete! Connecting to live updates...');
       setIsProcessing(true);
 
@@ -699,15 +795,18 @@ export default function VideoAnalysisTab() {
                 >
                   📹 Pose Analytics
                 </button>
-                <button
-                  onClick={() => setViewMode('3d')}
-                  className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base ${viewMode === '3d'
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
-                    : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
-                    }`}
-                >
-                  🎯 3D View
-                </button>
+                {/* 3D view is only available when the video is classified as cricket */}
+                {bedrockAnalytics?.is_cricket_video !== false && (
+                  <button
+                    onClick={() => setViewMode('3d')}
+                    className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base ${viewMode === '3d'
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
+                      : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                      }`}
+                  >
+                    🎯 3D View
+                  </button>
+                )}
               </div>
             )}
 
@@ -908,33 +1007,50 @@ export default function VideoAnalysisTab() {
               </button> */}
             </div>
 
-            {/* Summary Section - Enhanced */}
-            <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-900/20 rounded-xl sm:rounded-2xl border border-emerald-500/30 p-5 sm:p-8 shadow-2xl overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 sm:w-64 sm:h-64 bg-emerald-500/5 rounded-full blur-3xl"></div>
-              <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex-1">
-                  <h3 className="text-lg sm:text-2xl font-bold text-white mb-2 sm:mb-3 leading-tight">
-                    {bedrockAnalytics.summary?.headline}
-                  </h3>
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs sm:text-sm font-semibold border border-emerald-500/30">
-                      {bedrockAnalytics.summary?.skill_level}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-center w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-2xl shadow-emerald-500/30 border-4 border-emerald-300/20 self-center sm:self-auto">
-                  <div className="text-center">
-                    <div className="text-3xl sm:text-4xl font-bold text-white">
-                      {bedrockAnalytics.summary?.overall_score}
+            {/* Non-cricket message handling */}
+            {bedrockAnalytics.is_cricket_video === false && (
+              <div className="bg-amber-900/30 border border-amber-700 rounded-xl sm:rounded-2xl p-4 sm:p-5 mb-4 sm:mb-6">
+                <p className="text-sm sm:text-base text-amber-100 font-semibold mb-1">
+                  Not a cricket sports video.
+                </p>
+                <p className="text-xs sm:text-sm text-amber-200">
+                  {bedrockAnalytics.explanation?.long_form ||
+                    'Pegasus analysed the footage and determined it is not suitable for detailed cricket technique feedback.'}
+                </p>
+              </div>
+            )}
+
+            {/* Summary Section - Enhanced (only for cricket videos) */}
+            {bedrockAnalytics.is_cricket_video !== false && (
+              <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-900/20 rounded-xl sm:rounded-2xl border border-emerald-500/30 p-5 sm:p-8 shadow-2xl overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 sm:w-64 sm:h-64 bg-emerald-500/5 rounded-full blur-3xl"></div>
+                <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <h3 className="text-lg sm:text-2xl font-bold text-white mb-2 sm:mb-3 leading-tight">
+                      {bedrockAnalytics.summary?.headline}
+                    </h3>
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex items-center px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs sm:text-sm font-semibold border border-emerald-500/30">
+                        {bedrockAnalytics.summary?.skill_level}
+                      </span>
                     </div>
-                    <div className="text-[10px] sm:text-xs text-emerald-50 font-medium">/ 10</div>
+                  </div>
+                  <div className="flex items-center justify-center w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-2xl shadow-emerald-500/30 border-4 border-emerald-300/20 self-center sm:self-auto">
+                    <div className="text-center">
+                      <div className="text-3xl sm:text-4xl font-bold text-white">
+                        {bedrockAnalytics.summary?.overall_score}
+                      </div>
+                      <div className="text-[10px] sm:text-xs text-emerald-50 font-medium">/ 10</div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Key Observations - Enhanced */}
-            {bedrockAnalytics.key_observations && bedrockAnalytics.key_observations.length > 0 && (
+            {/* Key Observations - Enhanced (only for cricket videos) */}
+            {bedrockAnalytics.is_cricket_video !== false &&
+              bedrockAnalytics.key_observations &&
+              bedrockAnalytics.key_observations.length > 0 && (
               <div>
                 <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
@@ -970,8 +1086,10 @@ export default function VideoAnalysisTab() {
               </div>
             )}
 
-            {/* Improvement Areas - Enhanced */}
-            {bedrockAnalytics.improvement_areas && bedrockAnalytics.improvement_areas.length > 0 && (
+            {/* Improvement Areas - Enhanced (only for cricket videos) */}
+            {bedrockAnalytics.is_cricket_video !== false &&
+              bedrockAnalytics.improvement_areas &&
+              bedrockAnalytics.improvement_areas.length > 0 && (
               <div>
                 <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
@@ -1012,8 +1130,10 @@ export default function VideoAnalysisTab() {
               </div>
             )}
 
-            {/* Suggested Drills - Enhanced */}
-            {bedrockAnalytics.suggested_drills && bedrockAnalytics.suggested_drills.length > 0 && (
+            {/* Suggested Drills - Enhanced (only for cricket videos) */}
+            {bedrockAnalytics.is_cricket_video !== false &&
+              bedrockAnalytics.suggested_drills &&
+              bedrockAnalytics.suggested_drills.length > 0 && (
               <div>
                 <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
@@ -1070,8 +1190,8 @@ export default function VideoAnalysisTab() {
               </div>
             )}
 
-            {/* Explanation - Enhanced */}
-            {bedrockAnalytics.explanation && (
+            {/* Explanation - Enhanced (only for cricket videos) */}
+            {bedrockAnalytics.is_cricket_video !== false && bedrockAnalytics.explanation && (
               <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-6 shadow-lg">
                 <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
