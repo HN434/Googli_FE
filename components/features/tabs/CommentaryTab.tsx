@@ -761,7 +761,7 @@ export default function CommentaryTab() {
         <div className="bg-gray-800/50 rounded-lg sm:rounded-xl p-4 sm:p-6 border border-gray-700">
           <div className="flex justify-between items-center mb-3 sm:mb-4">
             <h3 className="text-base sm:text-lg font-semibold text-white">Commentary Log</h3>
-            {isCommentaryFetching && (
+            {isCommentaryFetching && matches.find(m => m.id === selectedMatchId)?.isLive && (
               <span className="flex items-center gap-2 px-3 py-1 bg-red-500/20 border border-red-500/30 text-red-400 rounded-full text-xs font-semibold">
                 <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
                 LIVE
