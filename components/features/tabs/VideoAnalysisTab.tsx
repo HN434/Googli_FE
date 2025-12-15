@@ -329,8 +329,8 @@ export default function VideoAnalysisTab() {
         const duration = tempVideo.duration;
 
         // Validate duration (10 to 60 seconds)
-        if (duration < 2) {
-          setError('Video duration must be at least 2 seconds. Please upload a longer video.');
+        if (duration < 10) {
+          setError('Video duration must be at least 10 seconds. Please upload a longer video.');
           URL.revokeObjectURL(url);
           if (fileInputRef.current) {
             fileInputRef.current.value = '';
