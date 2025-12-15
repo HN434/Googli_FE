@@ -667,7 +667,7 @@ export default function VideoAnalysisTab() {
                   </div>
                   <div className="flex-1">
                     <p className="text-slate-300 text-xs sm:text-sm">
-                      <span className="font-semibold text-emerald-400">Duration:</span> Between 2 to 60 seconds
+                      <span className="font-semibold text-emerald-400">Duration:</span> Between 10 to 60 seconds
                     </p>
                   </div>
                 </div>
