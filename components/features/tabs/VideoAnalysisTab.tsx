@@ -107,7 +107,8 @@ export default function VideoAnalysisTab() {
   const [duration, setDuration] = useState(0);
 
   const isNonCricketVideo = bedrockAnalytics?.is_cricket_video === false;
-  const canShow3DView = bedrockAnalytics?.is_cricket_video === true;
+  // Show 3D view and pose analytics by default (while loading) and only hide when explicitly not cricket
+  const canShow3DView = bedrockAnalytics?.is_cricket_video !== false;
   const isFullAnalysisComplete = !!bedrockAnalytics && keypointsData.length > 0;
 
 

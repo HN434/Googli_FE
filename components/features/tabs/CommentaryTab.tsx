@@ -564,7 +564,7 @@ export default function CommentaryTab() {
       {/* Header */}
       <div className="mb-6 sm:mb-8 text-center">
         <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 sm:mb-3 text-emerald-400">
-          Live Ball-by-Ball Commentary
+          Live Commentary
         </h1>
         <p className="text-sm sm:text-base text-gray-400 max-w-2xl mx-auto px-2">
           Choose a live match scenario and our AI will generate a live commentary stream for you.
