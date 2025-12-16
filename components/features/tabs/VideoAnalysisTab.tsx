@@ -490,77 +490,80 @@ export default function VideoAnalysisTab() {
         // 2. Clear Previous Frame
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 3. Calculate Frame Number using calculated FPS
-        const frameIndex = Math.floor(video.currentTime * calculatedFPS);
-        setCurrentFrame(frameIndex);
+        // Only draw skeleton overlay if the video is classified as cricket
+        if (canShow3DView) {
+          // 3. Calculate Frame Number using calculated FPS
+          const frameIndex = Math.floor(video.currentTime * calculatedFPS);
+          setCurrentFrame(frameIndex);
 
-        // 4. Get Data & Draw
-        const frameData = keypointsData[frameIndex];
+          // 4. Get Data & Draw
+          const frameData = keypointsData[frameIndex];
 
-        if (frameData) {
-          // Get keypoints for all persons in the frame
-          const allPersonsKeypoints = parseAllPersonsKeypoints(frameData);
+          if (frameData) {
+            // Get keypoints for all persons in the frame
+            const allPersonsKeypoints = parseAllPersonsKeypoints(frameData);
 
-          // Iterate through each person and draw their skeleton
-          allPersonsKeypoints.forEach((rawKeypoints) => {
-            // This scaling function ensures points align even if video is resized via CSS
-            const scaledKeypoints = scaleKeypoints(
-              rawKeypoints,
-              video.videoWidth,  // Original Video Width (e.g. 1920)
-              video.videoHeight, // Original Video Height (e.g. 1080)
-              canvas.width,      // Current Display Width (e.g. 400)
-              canvas.height      // Current Display Height (e.g. 800)
-            );
+            // Iterate through each person and draw their skeleton
+            allPersonsKeypoints.forEach((rawKeypoints) => {
+              // This scaling function ensures points align even if video is resized via CSS
+              const scaledKeypoints = scaleKeypoints(
+                rawKeypoints,
+                video.videoWidth,  // Original Video Width (e.g. 1920)
+                video.videoHeight, // Original Video Height (e.g. 1080)
+                canvas.width,      // Current Display Width (e.g. 400)
+                canvas.height      // Current Display Height (e.g. 800)
+              );
 
-            // Draw Connections (Lines)
-            SKELETON_CONNECTIONS.forEach(conn => {
-              const p1 = scaledKeypoints[conn.start];
-              const p2 = scaledKeypoints[conn.end];
-              if (p1 && p2 && p1.score > 0.3 && p2.score > 0.3) {
-                ctx.beginPath();
-                ctx.moveTo(p1.x, p1.y);
-                ctx.lineTo(p2.x, p2.y);
-                ctx.strokeStyle = conn.color;
-                ctx.lineWidth = 3;
-                ctx.stroke();
-              }
+              // Draw Connections (Lines)
+              SKELETON_CONNECTIONS.forEach(conn => {
+                const p1 = scaledKeypoints[conn.start];
+                const p2 = scaledKeypoints[conn.end];
+                if (p1 && p2 && p1.score > 0.3 && p2.score > 0.3) {
+                  ctx.beginPath();
+                  ctx.moveTo(p1.x, p1.y);
+                  ctx.lineTo(p2.x, p2.y);
+                  ctx.strokeStyle = conn.color;
+                  ctx.lineWidth = 3;
+                  ctx.stroke();
+                }
+              });
+
+              // Draw Joints (Dots)
+              scaledKeypoints.forEach((kp, idx) => {
+                if (kp.score > 0.3) {
+                  ctx.beginPath();
+                  ctx.arc(kp.x, kp.y, 4, 0, 2 * Math.PI);
+                  ctx.fillStyle = getKeypointColor(idx);
+                  ctx.fill();
+                  // Optional: Add white border to dots for visibility
+                  ctx.strokeStyle = 'white';
+                  ctx.lineWidth = 1;
+                  ctx.stroke();
+                }
+              });
             });
 
-            // Draw Joints (Dots)
-            scaledKeypoints.forEach((kp, idx) => {
-              if (kp.score > 0.3) {
-                ctx.beginPath();
-                ctx.arc(kp.x, kp.y, 4, 0, 2 * Math.PI);
-                ctx.fillStyle = getKeypointColor(idx);
-                ctx.fill();
-                // Optional: Add white border to dots for visibility
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-              }
-            });
-          });
+            // Draw Bat Detections (if available)
+            if (frameData.bats && frameData.bats.length > 0) {
+              const scaledBats = scaleBatDetections(
+                frameData.bats,
+                video.videoWidth,
+                video.videoHeight,
+                canvas.width,
+                canvas.height
+              );
 
-          // Draw Bat Detections (if available)
-          if (frameData.bats && frameData.bats.length > 0) {
-            const scaledBats = scaleBatDetections(
-              frameData.bats,
-              video.videoWidth,
-              video.videoHeight,
-              canvas.width,
-              canvas.height
-            );
-
-            scaledBats.forEach(bat => {
-              drawBatDetection(ctx, bat, true);
-            });
+              scaledBats.forEach(bat => {
+                drawBatDetection(ctx, bat, true);
+              });
+            }
           }
         }
       }
     }
 
     animationFrameRef.current = requestAnimationFrame(renderLoop);
-  }, [keypointsData, calculatedFPS]);
+  }, [keypointsData, calculatedFPS, canShow3DView]);
 
   useEffect(() => {
     if (videoUrl) {
@@ -797,8 +800,8 @@ export default function VideoAnalysisTab() {
         ) : (
           // Player State with Tabbed Views
           <div className="relative flex flex-col items-center bg-black">
-            {/* Tab Switcher - Only show when keypoints data is available */}
-            {keypointsData.length > 0 && (
+            {/* Tab Switcher - Only show when keypoints data is available AND it's a cricket video */}
+            {keypointsData.length > 0 && canShow3DView && (
               <div className="w-full bg-slate-800/90 border-b border-slate-700 p-3 sm:p-4 flex items-center justify-center gap-2 sm:gap-4">
                 <button
                   onClick={() => setViewMode('video')}
