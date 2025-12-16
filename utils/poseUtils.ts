@@ -84,6 +84,19 @@ export const parseKeypoints = (frameData: PoseFrame): Keypoint[] => {
     }));
 };
 
+// Parse keypoints for all persons in a frame
+export const parseAllPersonsKeypoints = (frameData: PoseFrame): Keypoint[][] => {
+    if (!frameData || !frameData.persons || frameData.persons.length === 0) return [];
+
+    return frameData.persons.map(person =>
+        person.keypoints.map((kp, index) => ({
+            x: kp[0],
+            y: kp[1],
+            score: person.scores[index],
+        }))
+    );
+};
+
 // 3. Updated Scaling Logic with "Neck" Calculation
 export const scaleKeypoints = (
     keypoints: Keypoint[],

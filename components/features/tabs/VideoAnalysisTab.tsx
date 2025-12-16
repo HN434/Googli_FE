@@ -5,6 +5,7 @@ import { Upload, Play, Pause, RefreshCw, Loader2, Download, AlertTriangle, Trend
 import { useRef, useState, useEffect, useCallback } from "react";
 import {
   parseKeypoints,
+  parseAllPersonsKeypoints,
   scaleKeypoints,
   SKELETON_CONNECTIONS,
   getKeypointColor,
@@ -14,7 +15,66 @@ import { scaleBatDetections, drawBatDetection } from "@/utils/batUtils";
 import { useVideoWebSocket } from "@/hooks/useVideoWebSocket";
 import ThreeDSkeletonView from "./ThreeDSkeletonView";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_BE_URL || "http://localhost:8000/api";
+const API_BASE_URL = (process.env.NEXT_PUBLIC_BE_URL || "http://localhost:8000/api").replace(/\/$/, "");
+
+const buildApiUrl = (path: string) => `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+
+const formatSeconds = (seconds?: number) => {
+  if (seconds === undefined || Number.isNaN(seconds)) return "-";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${mins}:${secs}`;
+};
+
+const normalizeAnalyticsPayload = (payload: any) => {
+  if (!payload) return null;
+
+  // If this already looks like a structured analytics object, just return it
+  if (typeof payload === "object" && payload !== null) {
+    if (payload.summary || payload.key_observations || payload.improvement_areas || payload.explanation) {
+      return payload;
+    }
+  }
+
+  if (typeof payload === "string") {
+    try {
+      return JSON.parse(payload);
+    } catch {
+      return null;
+    }
+  }
+  // Common Bedrock streaming wrappers
+  if (payload.content && Array.isArray(payload.content) && payload.content[0]?.text) {
+    try {
+      return JSON.parse(payload.content[0].text);
+    } catch {
+      return payload.content[0].text;
+    }
+  }
+  if (payload.data) {
+    const inner = payload.data;
+    // If Pegasus/Bedrock has wrapped JSON inside a "message" string, parse it
+    if (inner && typeof inner === "object" && typeof inner.message === "string") {
+      try {
+        return JSON.parse(inner.message);
+      } catch {
+        return inner;
+      }
+    }
+    return inner;
+  }
+  // Fallback: if we have a "message" string that looks like JSON, parse it
+  if (payload && typeof payload === "object" && typeof payload.message === "string") {
+    try {
+      return JSON.parse(payload.message);
+    } catch {
+      return payload;
+    }
+  }
+  return payload;
+};
 
 export default function VideoAnalysisTab() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -46,6 +106,10 @@ export default function VideoAnalysisTab() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
+  const isNonCricketVideo = bedrockAnalytics?.is_cricket_video === false;
+  const canShow3DView = bedrockAnalytics?.is_cricket_video === true;
+  const isFullAnalysisComplete = !!bedrockAnalytics && keypointsData.length > 0;
+
 
   // WebSocket integration
   const { isConnected: wsConnected, isConnecting: wsConnecting, error: wsError } = useVideoWebSocket({
@@ -64,10 +128,9 @@ export default function VideoAnalysisTab() {
     }, [videoDuration]),
     onBedrockAnalytics: useCallback((analytics: any) => {
       console.log('Received Bedrock analytics via WebSocket', analytics);
-      // const textData = analytics.content[0].text;
-      // const analyticsData = JSON.parse(textData);
-      setBedrockAnalytics(analytics);
-      setUploadStatus('Analysis complete!');
+      const normalized = normalizeAnalyticsPayload(analytics);
+      setBedrockAnalytics(normalized);
+      // Do not mark analysis complete yet; wait until pose/keypoints are also ready
     }, []),
     onError: useCallback((errorMsg: string) => {
       console.error('WebSocket error:', errorMsg);
@@ -122,7 +185,7 @@ export default function VideoAnalysisTab() {
   // Fetch analysis data from API (JSON format only)
   const fetchAnalysisData = async (videoId: string): Promise<PoseFrame[] | null> => {
     try {
-      const url = `${API_BASE_URL}videos/${videoId}/analysis?format=json`;
+      const url = buildApiUrl(`/videos/${videoId}/analysis?format=json`);
       console.log('Fetching analysis from:', url);
 
       const response = await fetch(url);
@@ -156,7 +219,7 @@ export default function VideoAnalysisTab() {
   // Fetch bedrock analytics data from API
   const fetchBedrockAnalytics = async (videoId: string): Promise<any | null> => {
     try {
-      const url = `${API_BASE_URL}videos/${videoId}/bedrock-analytics`;
+      const url = buildApiUrl(`/videos/${videoId}/bedrock-analytics`);
       console.log('Fetching bedrock analytics from:', url);
 
       const response = await fetch(url);
@@ -175,16 +238,7 @@ export default function VideoAnalysisTab() {
       const responseData = await response.json();
       console.log('Raw bedrock analytics response:', responseData);
 
-      // Extract the stringified JSON from content[0].text
-      let analyticsData;
-      if (responseData.content && responseData.content[0] && responseData.content[0].text) {
-        // Parse the stringified JSON from content[0].text
-        const textData = responseData.content[0].text;
-        analyticsData = JSON.parse(textData);
-      } else {
-        // Fallback: try parsing the response directly
-        analyticsData = responseData;
-      }
+      const analyticsData = normalizeAnalyticsPayload(responseData);
 
       console.log('Parsed bedrock analytics:', analyticsData);
       return analyticsData;
@@ -227,6 +281,21 @@ export default function VideoAnalysisTab() {
     }
   }, [videoDuration, keypointsData.length, calculateFPS]);
 
+  // Mark analysis as complete only when both pose and Pegasus analytics are ready
+  useEffect(() => {
+    if (isFullAnalysisComplete) {
+      setUploadStatus('Analysis complete!');
+    }
+  }, [isFullAnalysisComplete]);
+
+  // If Pegasus decides this is NOT a cricket video, force view back to video and disable 3D
+  useEffect(() => {
+    if (isNonCricketVideo && viewMode === '3d') {
+      setViewMode('video');
+      setIs3DPlaying(false);
+    }
+  }, [isNonCricketVideo, viewMode]);
+
   // Manual fetch analysis data
   const handleManualFetchAnalysis = async () => {
     if (!manualVideoId.trim()) {
@@ -267,26 +336,63 @@ export default function VideoAnalysisTab() {
   const uploadVideo = async (file: File) => {
     setIsUploading(true);
     setError(null);
-    setUploadStatus('Uploading video...');
+    setUploadStatus('Requesting upload slot...');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch(`${API_BASE_URL}videos/upload`, {
+      // 1) Ask backend for presigned URL
+      const presignResponse = await fetch(buildApiUrl('/videos/presigned-url'), {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type || 'video/mp4',
+          file_size_bytes: file.size,
+        }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+      if (!presignResponse.ok) {
+        const errorText = await presignResponse.text();
+        throw new Error(`Could not get upload URL: ${presignResponse.status} - ${errorText}`);
       }
 
-      const result = await response.json();
-      console.log('Upload response:', result);
+      const presignData = await presignResponse.json();
+      console.log('Presign response:', presignData);
+      setUploadedVideoId(presignData.video_id);
+      const presignedContentType = presignData.content_type || file.type || 'application/octet-stream';
 
-      setUploadedVideoId(result.video_id);
+      // 2) Upload directly to S3 using the presigned URL
+      setUploadStatus('Uploading to secure storage...');
+      const uploadResponse = await fetch(presignData.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': presignedContentType },
+        body: file,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Cloud upload failed: ${uploadResponse.status} - ${errorText}`);
+      }
+
+      // 3) Tell backend the upload is complete so it can enqueue analysis
+      setUploadStatus('Finalising upload...');
+      const completeResponse = await fetch(buildApiUrl('/videos/upload-complete'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: presignData.video_id,
+          file_size_bytes: file.size,
+          checksum: undefined,
+        }),
+      });
+
+      if (!completeResponse.ok) {
+        const errorText = await completeResponse.text();
+        throw new Error(`Failed to confirm upload: ${completeResponse.status} - ${errorText}`);
+      }
+
+      const completeData = await completeResponse.json();
+      console.log('Upload-complete response:', completeData);
+
       setUploadStatus('Upload complete! Connecting to live updates...');
       setIsProcessing(true);
 
@@ -329,8 +435,8 @@ export default function VideoAnalysisTab() {
         const duration = tempVideo.duration;
 
         // Validate duration (10 to 60 seconds)
-        if (duration < 10) {
-          setError('Video duration must be at least 10 seconds. Please upload a longer video.');
+        if (duration < 5) {
+          setError('Video duration must be at least 5 seconds. Please upload a longer video.');
           URL.revokeObjectURL(url);
           if (fileInputRef.current) {
             fileInputRef.current.value = '';
@@ -384,73 +490,80 @@ export default function VideoAnalysisTab() {
         // 2. Clear Previous Frame
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 3. Calculate Frame Number using calculated FPS
-        const frameIndex = Math.floor(video.currentTime * calculatedFPS);
-        setCurrentFrame(frameIndex);
+        // Only draw skeleton overlay if the video is classified as cricket
+        if (canShow3DView) {
+          // 3. Calculate Frame Number using calculated FPS
+          const frameIndex = Math.floor(video.currentTime * calculatedFPS);
+          setCurrentFrame(frameIndex);
 
-        // 4. Get Data & Draw
-        const frameData = keypointsData[frameIndex];
+          // 4. Get Data & Draw
+          const frameData = keypointsData[frameIndex];
 
-        if (frameData) {
-          const rawKeypoints = parseKeypoints(frameData);
+          if (frameData) {
+            // Get keypoints for all persons in the frame
+            const allPersonsKeypoints = parseAllPersonsKeypoints(frameData);
 
-          // This scaling function ensures points align even if video is resized via CSS
-          const scaledKeypoints = scaleKeypoints(
-            rawKeypoints,
-            video.videoWidth,  // Original Video Width (e.g. 1920)
-            video.videoHeight, // Original Video Height (e.g. 1080)
-            canvas.width,      // Current Display Width (e.g. 400)
-            canvas.height      // Current Display Height (e.g. 800)
-          );
+            // Iterate through each person and draw their skeleton
+            allPersonsKeypoints.forEach((rawKeypoints) => {
+              // This scaling function ensures points align even if video is resized via CSS
+              const scaledKeypoints = scaleKeypoints(
+                rawKeypoints,
+                video.videoWidth,  // Original Video Width (e.g. 1920)
+                video.videoHeight, // Original Video Height (e.g. 1080)
+                canvas.width,      // Current Display Width (e.g. 400)
+                canvas.height      // Current Display Height (e.g. 800)
+              );
 
-          // Draw Connections (Lines)
-          SKELETON_CONNECTIONS.forEach(conn => {
-            const p1 = scaledKeypoints[conn.start];
-            const p2 = scaledKeypoints[conn.end];
-            if (p1 && p2 && p1.score > 0.3 && p2.score > 0.3) {
-              ctx.beginPath();
-              ctx.moveTo(p1.x, p1.y);
-              ctx.lineTo(p2.x, p2.y);
-              ctx.strokeStyle = conn.color;
-              ctx.lineWidth = 3;
-              ctx.stroke();
-            }
-          });
+              // Draw Connections (Lines)
+              SKELETON_CONNECTIONS.forEach(conn => {
+                const p1 = scaledKeypoints[conn.start];
+                const p2 = scaledKeypoints[conn.end];
+                if (p1 && p2 && p1.score > 0.3 && p2.score > 0.3) {
+                  ctx.beginPath();
+                  ctx.moveTo(p1.x, p1.y);
+                  ctx.lineTo(p2.x, p2.y);
+                  ctx.strokeStyle = conn.color;
+                  ctx.lineWidth = 3;
+                  ctx.stroke();
+                }
+              });
 
-          // Draw Joints (Dots)
-          scaledKeypoints.forEach((kp, idx) => {
-            if (kp.score > 0.3) {
-              ctx.beginPath();
-              ctx.arc(kp.x, kp.y, 4, 0, 2 * Math.PI);
-              ctx.fillStyle = getKeypointColor(idx);
-              ctx.fill();
-              // Optional: Add white border to dots for visibility
-              ctx.strokeStyle = 'white';
-              ctx.lineWidth = 1;
-              ctx.stroke();
-            }
-          });
-
-          // Draw Bat Detections (if available)
-          if (frameData.bats && frameData.bats.length > 0) {
-            const scaledBats = scaleBatDetections(
-              frameData.bats,
-              video.videoWidth,
-              video.videoHeight,
-              canvas.width,
-              canvas.height
-            );
-
-            scaledBats.forEach(bat => {
-              drawBatDetection(ctx, bat, true);
+              // Draw Joints (Dots)
+              scaledKeypoints.forEach((kp, idx) => {
+                if (kp.score > 0.3) {
+                  ctx.beginPath();
+                  ctx.arc(kp.x, kp.y, 4, 0, 2 * Math.PI);
+                  ctx.fillStyle = getKeypointColor(idx);
+                  ctx.fill();
+                  // Optional: Add white border to dots for visibility
+                  ctx.strokeStyle = 'white';
+                  ctx.lineWidth = 1;
+                  ctx.stroke();
+                }
+              });
             });
+
+            // Draw Bat Detections (if available)
+            if (frameData.bats && frameData.bats.length > 0) {
+              const scaledBats = scaleBatDetections(
+                frameData.bats,
+                video.videoWidth,
+                video.videoHeight,
+                canvas.width,
+                canvas.height
+              );
+
+              scaledBats.forEach(bat => {
+                drawBatDetection(ctx, bat, true);
+              });
+            }
           }
         }
       }
     }
 
     animationFrameRef.current = requestAnimationFrame(renderLoop);
-  }, [keypointsData, calculatedFPS]);
+  }, [keypointsData, calculatedFPS, canShow3DView]);
 
   useEffect(() => {
     if (videoUrl) {
@@ -564,8 +677,8 @@ export default function VideoAnalysisTab() {
         </div>
       )}
 
-      {/* Success Message */}
-      {uploadStatus && !isUploading && !isProcessing && !isFetchingAnalysis && !error && (
+      {/* Success Message - only after full analysis (Pegasus + pose) is complete */}
+      {uploadStatus && isFullAnalysisComplete && !isUploading && !isProcessing && !isFetchingAnalysis && !error && (
         <div className="mb-3 sm:mb-4 bg-emerald-900/30 border border-emerald-700 rounded-lg p-3 sm:p-4">
           <p className="text-sm sm:text-base text-emerald-200 font-medium break-words">✓ {uploadStatus}</p>
           {/* {keypointsData.length > 0 && (
@@ -667,7 +780,7 @@ export default function VideoAnalysisTab() {
                   </div>
                   <div className="flex-1">
                     <p className="text-slate-300 text-xs sm:text-sm">
-                      <span className="font-semibold text-emerald-400">Duration:</span> Between 10 to 60 seconds
+                      <span className="font-semibold text-emerald-400">Duration:</span> Between 5 to 60 seconds
                     </p>
                   </div>
                 </div>
@@ -687,8 +800,8 @@ export default function VideoAnalysisTab() {
         ) : (
           // Player State with Tabbed Views
           <div className="relative flex flex-col items-center bg-black">
-            {/* Tab Switcher - Only show when keypoints data is available */}
-            {keypointsData.length > 0 && (
+            {/* Tab Switcher - Only show when keypoints data is available AND it's a cricket video */}
+            {keypointsData.length > 0 && canShow3DView && (
               <div className="w-full bg-slate-800/90 border-b border-slate-700 p-3 sm:p-4 flex items-center justify-center gap-2 sm:gap-4">
                 <button
                   onClick={() => setViewMode('video')}
@@ -699,15 +812,18 @@ export default function VideoAnalysisTab() {
                 >
                   📹 Pose Analytics
                 </button>
-                <button
-                  onClick={() => setViewMode('3d')}
-                  className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base ${viewMode === '3d'
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
-                    : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
-                    }`}
-                >
-                  🎯 3D View
-                </button>
+                {/* 3D view is only available when the video is explicitly classified as cricket */}
+                {canShow3DView && (
+                  <button
+                    onClick={() => setViewMode('3d')}
+                    className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base ${viewMode === '3d'
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
+                      : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                      }`}
+                  >
+                    🎯 3D View
+                  </button>
+                )}
               </div>
             )}
 
@@ -908,170 +1024,191 @@ export default function VideoAnalysisTab() {
               </button> */}
             </div>
 
-            {/* Summary Section - Enhanced */}
-            <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-900/20 rounded-xl sm:rounded-2xl border border-emerald-500/30 p-5 sm:p-8 shadow-2xl overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 sm:w-64 sm:h-64 bg-emerald-500/5 rounded-full blur-3xl"></div>
-              <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex-1">
-                  <h3 className="text-lg sm:text-2xl font-bold text-white mb-2 sm:mb-3 leading-tight">
-                    {bedrockAnalytics.summary?.headline}
+            {/* Non-cricket message handling */}
+            {bedrockAnalytics.is_cricket_video === false && (
+              <div className="bg-amber-900/30 border border-amber-700 rounded-xl sm:rounded-2xl p-4 sm:p-5 mb-4 sm:mb-6">
+                <p className="text-sm sm:text-base text-amber-100 font-semibold mb-1">
+                  Not a cricket sports video.
+                </p>
+                <p className="text-xs sm:text-sm text-amber-200">
+                  {bedrockAnalytics.explanation?.long_form ||
+                    'Pegasus analysed the footage and determined it is not suitable for detailed cricket technique feedback.'}
+                </p>
+              </div>
+            )}
+
+            {/* Summary Section - Enhanced (only for cricket videos) */}
+            {bedrockAnalytics.is_cricket_video !== false && (
+              <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-900/20 rounded-xl sm:rounded-2xl border border-emerald-500/30 p-5 sm:p-8 shadow-2xl overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 sm:w-64 sm:h-64 bg-emerald-500/5 rounded-full blur-3xl"></div>
+                <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <h3 className="text-lg sm:text-2xl font-bold text-white mb-2 sm:mb-3 leading-tight">
+                      {bedrockAnalytics.summary?.headline}
+                    </h3>
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex items-center px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs sm:text-sm font-semibold border border-emerald-500/30">
+                        {bedrockAnalytics.summary?.skill_level}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-center w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-2xl shadow-emerald-500/30 border-4 border-emerald-300/20 self-center sm:self-auto">
+                    <div className="text-center">
+                      <div className="text-3xl sm:text-4xl font-bold text-white">
+                        {bedrockAnalytics.summary?.overall_score}
+                      </div>
+                      <div className="text-[10px] sm:text-xs text-emerald-50 font-medium">/ 10</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Key Observations - Enhanced (only for cricket videos) */}
+            {bedrockAnalytics.is_cricket_video !== false &&
+              bedrockAnalytics.key_observations &&
+              bedrockAnalytics.key_observations.length > 0 && (
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
+                    Key Observations
                   </h3>
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs sm:text-sm font-semibold border border-emerald-500/30">
-                      {bedrockAnalytics.summary?.skill_level}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-center w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-2xl shadow-emerald-500/30 border-4 border-emerald-300/20 self-center sm:self-auto">
-                  <div className="text-center">
-                    <div className="text-3xl sm:text-4xl font-bold text-white">
-                      {bedrockAnalytics.summary?.overall_score}
-                    </div>
-                    <div className="text-[10px] sm:text-xs text-emerald-50 font-medium">/ 10</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Key Observations - Enhanced */}
-            {bedrockAnalytics.key_observations && bedrockAnalytics.key_observations.length > 0 && (
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
-                  Key Observations
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                  {bedrockAnalytics.key_observations.map((obs: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="relative bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-6 hover:border-emerald-500/50 transition-all group hover:shadow-xl hover:shadow-emerald-500/10"
-                    >
-                      <div className="flex items-start gap-3 sm:gap-5">
-                        <div className="flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 flex-shrink-0 shadow-lg">
-                          <div className="text-center">
-                            <div className="text-xl sm:text-2xl font-bold text-emerald-400">
-                              {obs.score}
-                            </div>
-                            <div className="text-[10px] sm:text-xs text-emerald-300 font-medium">/10</div>
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2 group-hover:text-emerald-400 transition-colors">
-                            {obs.title}
-                          </h4>
-                          <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
-                            {obs.description}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Improvement Areas - Enhanced */}
-            {bedrockAnalytics.improvement_areas && bedrockAnalytics.improvement_areas.length > 0 && (
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
-                  Improvement Areas
-                </h3>
-                <div className="space-y-3 sm:space-y-4">
-                  {bedrockAnalytics.improvement_areas.map((area: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="bg-gradient-to-r from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-5 hover:border-yellow-500/50 transition-all hover:shadow-lg hover:shadow-yellow-500/10"
-                    >
-                      <div className="flex items-start gap-3 sm:gap-4">
-                        <div className="mt-0.5 sm:mt-1 p-1.5 sm:p-2 rounded-lg bg-yellow-500/10 flex-shrink-0">
-                          <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
-                            <h4 className="text-base sm:text-lg font-bold text-white">
-                              {area.title}
-                            </h4>
-                            <span
-                              className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wide inline-block ${area.priority === 'high'
-                                ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                                : area.priority === 'medium'
-                                  ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                }`}
-                            >
-                              {area.priority}
-                            </span>
-                          </div>
-                          <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">{area.detail}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Suggested Drills - Enhanced */}
-            {bedrockAnalytics.suggested_drills && bedrockAnalytics.suggested_drills.length > 0 && (
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
-                  Suggested Drills
-                </h3>
-                <div className="space-y-2 sm:space-y-3">
-                  {bedrockAnalytics.suggested_drills.map((drill: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="bg-slate-800/70 rounded-lg sm:rounded-xl border border-slate-700 overflow-hidden hover:border-emerald-500/50 transition-all hover:shadow-lg hover:shadow-emerald-500/10"
-                    >
-                      <button
-                        onClick={() => setExpandedDrill(expandedDrill === idx ? null : idx)}
-                        className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-700/50 transition-colors"
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                    {bedrockAnalytics.key_observations.map((obs: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="relative bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-6 hover:border-emerald-500/50 transition-all group hover:shadow-xl hover:shadow-emerald-500/10"
                       >
-                        <div className="flex-1 min-w-0 pr-2">
-                          <h4 className="text-base sm:text-lg font-bold text-white mb-1.5 sm:mb-2">
-                            {drill.name}
-                          </h4>
-                          <span className="inline-flex items-center px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] sm:text-xs font-semibold border border-emerald-500/30">
-                            {drill.focus_area}
-                          </span>
-                        </div>
-                        <div className="ml-2 sm:ml-4 flex-shrink-0">
-                          <div
-                            className={`transform transition-transform duration-200 ${expandedDrill === idx ? 'rotate-180' : ''}`}
-                          >
-                            <svg
-                              className="w-6 h-6 text-slate-400"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 9l-7 7-7-7"
-                              />
-                            </svg>
+                        <div className="flex items-start gap-3 sm:gap-5">
+                          <div className="flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 flex-shrink-0 shadow-lg">
+                            <div className="text-center">
+                              <div className="text-xl sm:text-2xl font-bold text-emerald-400">
+                                {obs.score}
+                              </div>
+                              <div className="text-[10px] sm:text-xs text-emerald-300 font-medium">/10</div>
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2 group-hover:text-emerald-400 transition-colors">
+                              {obs.title}
+                            </h4>
+                            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
+                              {obs.description}
+                            </p>
                           </div>
                         </div>
-                      </button>
-                      {expandedDrill === idx && (
-                        <div className="px-4 sm:px-5 pb-4 sm:pb-5 border-t border-slate-700 bg-slate-900/30">
-                          <p className="text-slate-300 text-xs sm:text-sm mt-3 sm:mt-4 leading-relaxed">
-                            {drill.description}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Explanation - Enhanced */}
-            {bedrockAnalytics.explanation && (
+            {/* Improvement Areas - Enhanced (only for cricket videos) */}
+            {bedrockAnalytics.is_cricket_video !== false &&
+              bedrockAnalytics.improvement_areas &&
+              bedrockAnalytics.improvement_areas.length > 0 && (
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
+                    Improvement Areas
+                  </h3>
+                  <div className="space-y-3 sm:space-y-4">
+                    {bedrockAnalytics.improvement_areas.map((area: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="bg-gradient-to-r from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-5 hover:border-yellow-500/50 transition-all hover:shadow-lg hover:shadow-yellow-500/10"
+                      >
+                        <div className="flex items-start gap-3 sm:gap-4">
+                          <div className="mt-0.5 sm:mt-1 p-1.5 sm:p-2 rounded-lg bg-yellow-500/10 flex-shrink-0">
+                            <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
+                              <h4 className="text-base sm:text-lg font-bold text-white">
+                                {area.title}
+                              </h4>
+                              <span
+                                className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wide inline-block ${area.priority === 'high'
+                                  ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                  : area.priority === 'medium'
+                                    ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                                    : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                  }`}
+                              >
+                                {area.priority}
+                              </span>
+                            </div>
+                            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">{area.detail}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            {/* Suggested Drills - Enhanced (only for cricket videos) */}
+            {bedrockAnalytics.is_cricket_video !== false &&
+              bedrockAnalytics.suggested_drills &&
+              bedrockAnalytics.suggested_drills.length > 0 && (
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
+                    Suggested Drills
+                  </h3>
+                  <div className="space-y-2 sm:space-y-3">
+                    {bedrockAnalytics.suggested_drills.map((drill: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="bg-slate-800/70 rounded-lg sm:rounded-xl border border-slate-700 overflow-hidden hover:border-emerald-500/50 transition-all hover:shadow-lg hover:shadow-emerald-500/10"
+                      >
+                        <button
+                          onClick={() => setExpandedDrill(expandedDrill === idx ? null : idx)}
+                          className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-700/50 transition-colors"
+                        >
+                          <div className="flex-1 min-w-0 pr-2">
+                            <h4 className="text-base sm:text-lg font-bold text-white mb-1.5 sm:mb-2">
+                              {drill.name}
+                            </h4>
+                            {/* <span className="inline-flex items-center px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] sm:text-xs font-semibold border border-emerald-500/30">
+                              {drill.focus_area}
+                            </span> */}
+                          </div>
+                          <div className="ml-2 sm:ml-4 flex-shrink-0">
+                            <div
+                              className={`transform transition-transform duration-200 ${expandedDrill === idx ? 'rotate-180' : ''}`}
+                            >
+                              <svg
+                                className="w-6 h-6 text-slate-400"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 9l-7 7-7-7"
+                                />
+                              </svg>
+                            </div>
+                          </div>
+                        </button>
+                        {expandedDrill === idx && (
+                          <div className="px-4 sm:px-5 pb-4 sm:pb-5 border-t border-slate-700 bg-slate-900/30">
+                            <p className="text-slate-300 text-xs sm:text-sm mt-3 sm:mt-4 leading-relaxed">
+                              {drill.description}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            {/* Explanation - Enhanced (only for cricket videos) */}
+            {bedrockAnalytics.is_cricket_video !== false && bedrockAnalytics.explanation && (
               <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-6 shadow-lg">
                 <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
@@ -1104,7 +1241,7 @@ export default function VideoAnalysisTab() {
         )}
 
         {/* Analytics Shimmer Loading State - Shows when video is loaded but analytics aren't ready */}
-        {videoUrl && keypointsData.length > 0 && !bedrockAnalytics && (
+        {videoUrl && !bedrockAnalytics && (
           <div className="w-full mt-8 space-y-8 p-6 bg-slate-900/50 animate-pulse">
             {/* Header Shimmer */}
             <div className="flex items-center justify-between mb-6">

@@ -6,7 +6,7 @@ import { PoseFrame } from '@/utils/poseUtils';
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/api';
 
 export interface VideoWebSocketMessage {
-    type: 'keypoints' | 'bedrock_analysis' | 'error' | 'complete';
+    type: 'keypoints' | 'bedrock_analysis' | 'pegasus_analysis' | 'error' | 'complete';
     data?: any;
     message?: string;
 }
@@ -110,6 +110,7 @@ export function useVideoWebSocket({
                             break;
 
                         case 'bedrock_analysis':
+                        case 'pegasus_analysis':
                             if (onBedrockAnalytics && message.data) {
                                 onBedrockAnalytics(message.data);
                             }
