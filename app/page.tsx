@@ -29,7 +29,7 @@ export default function Home() {
       <Stats />
       <Experience />
       <KeyFeatures />
-      <VideoFeedback />
+      {/* <VideoFeedback /> */}
     </main>
     // <main className="min-h-screen bg-gray-900">
     //   <FeaturesHero />
