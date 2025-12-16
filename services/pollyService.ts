@@ -613,6 +613,11 @@ class PollyService {
         // Convert to string if not already
         text = String(text || '');
 
+        // Format cricket scores for better pronunciation
+        // Convert "127/7" or "127-7" to "127 for 7" so it's pronounced as "one twenty seven for seven"
+        text = text.replace(/(\d+)[\/\-](\d+)/g, '$1 for $2');
+
+
         // Remove only emojis (but keep Hindi/Spanish/Devanagari text)
         text = text.replace(/[\u{1F000}-\u{1F9FF}]/gu, ''); // Emoticons
         text = text.replace(/[\u{2600}-\u{27BF}]/gu, ''); // Misc symbols (but not Devanagari)
@@ -632,7 +637,8 @@ class PollyService {
         text = text.replace(/[$#@%^&*_+=\[\]{}|\\<>~`]/g, '');
 
         // Add pauses for better clarity
-        text = text.replace(/\./g, '. ');
+        // Only add space after periods that are NOT part of decimal numbers (e.g., avoid "23.5" becoming "23. 5")
+        text = text.replace(/\.(?!\d)/g, '. ');
         text = text.replace(/,/g, ', ');
         text = text.replace(/!/g, '! ');
         text = text.replace(/\?/g, '? ');
