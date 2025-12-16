@@ -767,7 +767,7 @@ export default function FloatingChat({ onClose, isFullscreen = false, onToggleFu
                                             </ReactMarkdown>
                                         </div>
                                     ) : msg.type === 'error' ? (
-                                        <p className="leading-relaxed whitespace-pre-wrap">Encountered an error, please try again.</p>
+                                        <p className="leading-relaxed whitespace-pre-wrap">You are making requests too frequently. Please wait a few minutes and try again.</p>
                                     ) : (
                                         <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                                     )}
