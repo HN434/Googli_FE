@@ -106,6 +106,8 @@ export default function VideoAnalysisTab() {
   const [duration, setDuration] = useState(0);
 
   const isNonCricketVideo = bedrockAnalytics?.is_cricket_video === false;
+  const canShow3DView = bedrockAnalytics?.is_cricket_video === true;
+  const isFullAnalysisComplete = !!bedrockAnalytics && keypointsData.length > 0;
 
 
   // WebSocket integration
@@ -127,7 +129,7 @@ export default function VideoAnalysisTab() {
       console.log('Received Bedrock analytics via WebSocket', analytics);
       const normalized = normalizeAnalyticsPayload(analytics);
       setBedrockAnalytics(normalized);
-      setUploadStatus('Analysis complete!');
+      // Do not mark analysis complete yet; wait until pose/keypoints are also ready
     }, []),
     onError: useCallback((errorMsg: string) => {
       console.error('WebSocket error:', errorMsg);
@@ -277,6 +279,13 @@ export default function VideoAnalysisTab() {
       calculateFPS(videoDuration, keypointsData.length);
     }
   }, [videoDuration, keypointsData.length, calculateFPS]);
+
+  // Mark analysis as complete only when both pose and Pegasus analytics are ready
+  useEffect(() => {
+    if (isFullAnalysisComplete) {
+      setUploadStatus('Analysis complete!');
+    }
+  }, [isFullAnalysisComplete]);
 
   // If Pegasus decides this is NOT a cricket video, force view back to video and disable 3D
   useEffect(() => {
@@ -660,8 +669,8 @@ export default function VideoAnalysisTab() {
         </div>
       )}
 
-      {/* Success Message */}
-      {uploadStatus && !isUploading && !isProcessing && !isFetchingAnalysis && !error && (
+      {/* Success Message - only after full analysis (Pegasus + pose) is complete */}
+      {uploadStatus && isFullAnalysisComplete && !isUploading && !isProcessing && !isFetchingAnalysis && !error && (
         <div className="mb-3 sm:mb-4 bg-emerald-900/30 border border-emerald-700 rounded-lg p-3 sm:p-4">
           <p className="text-sm sm:text-base text-emerald-200 font-medium break-words">✓ {uploadStatus}</p>
           {/* {keypointsData.length > 0 && (
@@ -795,8 +804,8 @@ export default function VideoAnalysisTab() {
                 >
                   📹 Pose Analytics
                 </button>
-                {/* 3D view is only available when the video is classified as cricket */}
-                {bedrockAnalytics?.is_cricket_video !== false && (
+                {/* 3D view is only available when the video is explicitly classified as cricket */}
+                {canShow3DView && (
                   <button
                     onClick={() => setViewMode('3d')}
                     className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base ${viewMode === '3d'
@@ -1224,7 +1233,7 @@ export default function VideoAnalysisTab() {
         )}
 
         {/* Analytics Shimmer Loading State - Shows when video is loaded but analytics aren't ready */}
-        {videoUrl && keypointsData.length > 0 && !bedrockAnalytics && (
+        {videoUrl && !bedrockAnalytics && (
           <div className="w-full mt-8 space-y-8 p-6 bg-slate-900/50 animate-pulse">
             {/* Header Shimmer */}
             <div className="flex items-center justify-between mb-6">
