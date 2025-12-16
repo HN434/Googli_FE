@@ -5,6 +5,7 @@ import { Upload, Play, Pause, RefreshCw, Loader2, Download, AlertTriangle, Trend
 import { useRef, useState, useEffect, useCallback } from "react";
 import {
   parseKeypoints,
+  parseAllPersonsKeypoints,
   scaleKeypoints,
   SKELETON_CONNECTIONS,
   getKeypointColor,
@@ -434,8 +435,8 @@ export default function VideoAnalysisTab() {
         const duration = tempVideo.duration;
 
         // Validate duration (10 to 60 seconds)
-        if (duration < 2) {
-          setError('Video duration must be at least 2 seconds. Please upload a longer video.');
+        if (duration < 5) {
+          setError('Video duration must be at least 5 seconds. Please upload a longer video.');
           URL.revokeObjectURL(url);
           if (fileInputRef.current) {
             fileInputRef.current.value = '';
@@ -497,43 +498,47 @@ export default function VideoAnalysisTab() {
         const frameData = keypointsData[frameIndex];
 
         if (frameData) {
-          const rawKeypoints = parseKeypoints(frameData);
+          // Get keypoints for all persons in the frame
+          const allPersonsKeypoints = parseAllPersonsKeypoints(frameData);
 
-          // This scaling function ensures points align even if video is resized via CSS
-          const scaledKeypoints = scaleKeypoints(
-            rawKeypoints,
-            video.videoWidth,  // Original Video Width (e.g. 1920)
-            video.videoHeight, // Original Video Height (e.g. 1080)
-            canvas.width,      // Current Display Width (e.g. 400)
-            canvas.height      // Current Display Height (e.g. 800)
-          );
+          // Iterate through each person and draw their skeleton
+          allPersonsKeypoints.forEach((rawKeypoints) => {
+            // This scaling function ensures points align even if video is resized via CSS
+            const scaledKeypoints = scaleKeypoints(
+              rawKeypoints,
+              video.videoWidth,  // Original Video Width (e.g. 1920)
+              video.videoHeight, // Original Video Height (e.g. 1080)
+              canvas.width,      // Current Display Width (e.g. 400)
+              canvas.height      // Current Display Height (e.g. 800)
+            );
 
-          // Draw Connections (Lines)
-          SKELETON_CONNECTIONS.forEach(conn => {
-            const p1 = scaledKeypoints[conn.start];
-            const p2 = scaledKeypoints[conn.end];
-            if (p1 && p2 && p1.score > 0.3 && p2.score > 0.3) {
-              ctx.beginPath();
-              ctx.moveTo(p1.x, p1.y);
-              ctx.lineTo(p2.x, p2.y);
-              ctx.strokeStyle = conn.color;
-              ctx.lineWidth = 3;
-              ctx.stroke();
-            }
-          });
+            // Draw Connections (Lines)
+            SKELETON_CONNECTIONS.forEach(conn => {
+              const p1 = scaledKeypoints[conn.start];
+              const p2 = scaledKeypoints[conn.end];
+              if (p1 && p2 && p1.score > 0.3 && p2.score > 0.3) {
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+                ctx.strokeStyle = conn.color;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+              }
+            });
 
-          // Draw Joints (Dots)
-          scaledKeypoints.forEach((kp, idx) => {
-            if (kp.score > 0.3) {
-              ctx.beginPath();
-              ctx.arc(kp.x, kp.y, 4, 0, 2 * Math.PI);
-              ctx.fillStyle = getKeypointColor(idx);
-              ctx.fill();
-              // Optional: Add white border to dots for visibility
-              ctx.strokeStyle = 'white';
-              ctx.lineWidth = 1;
-              ctx.stroke();
-            }
+            // Draw Joints (Dots)
+            scaledKeypoints.forEach((kp, idx) => {
+              if (kp.score > 0.3) {
+                ctx.beginPath();
+                ctx.arc(kp.x, kp.y, 4, 0, 2 * Math.PI);
+                ctx.fillStyle = getKeypointColor(idx);
+                ctx.fill();
+                // Optional: Add white border to dots for visibility
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+              }
+            });
           });
 
           // Draw Bat Detections (if available)
@@ -772,7 +777,7 @@ export default function VideoAnalysisTab() {
                   </div>
                   <div className="flex-1">
                     <p className="text-slate-300 text-xs sm:text-sm">
-                      <span className="font-semibold text-emerald-400">Duration:</span> Between 2 to 60 seconds
+                      <span className="font-semibold text-emerald-400">Duration:</span> Between 5 to 60 seconds
                     </p>
                   </div>
                 </div>
@@ -1060,144 +1065,144 @@ export default function VideoAnalysisTab() {
             {bedrockAnalytics.is_cricket_video !== false &&
               bedrockAnalytics.key_observations &&
               bedrockAnalytics.key_observations.length > 0 && (
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
-                  Key Observations
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                  {bedrockAnalytics.key_observations.map((obs: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="relative bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-6 hover:border-emerald-500/50 transition-all group hover:shadow-xl hover:shadow-emerald-500/10"
-                    >
-                      <div className="flex items-start gap-3 sm:gap-5">
-                        <div className="flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 flex-shrink-0 shadow-lg">
-                          <div className="text-center">
-                            <div className="text-xl sm:text-2xl font-bold text-emerald-400">
-                              {obs.score}
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
+                    Key Observations
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                    {bedrockAnalytics.key_observations.map((obs: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="relative bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-6 hover:border-emerald-500/50 transition-all group hover:shadow-xl hover:shadow-emerald-500/10"
+                      >
+                        <div className="flex items-start gap-3 sm:gap-5">
+                          <div className="flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 flex-shrink-0 shadow-lg">
+                            <div className="text-center">
+                              <div className="text-xl sm:text-2xl font-bold text-emerald-400">
+                                {obs.score}
+                              </div>
+                              <div className="text-[10px] sm:text-xs text-emerald-300 font-medium">/10</div>
                             </div>
-                            <div className="text-[10px] sm:text-xs text-emerald-300 font-medium">/10</div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2 group-hover:text-emerald-400 transition-colors">
+                              {obs.title}
+                            </h4>
+                            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
+                              {obs.description}
+                            </p>
                           </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2 group-hover:text-emerald-400 transition-colors">
-                            {obs.title}
-                          </h4>
-                          <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
-                            {obs.description}
-                          </p>
-                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Improvement Areas - Enhanced (only for cricket videos) */}
             {bedrockAnalytics.is_cricket_video !== false &&
               bedrockAnalytics.improvement_areas &&
               bedrockAnalytics.improvement_areas.length > 0 && (
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
-                  Improvement Areas
-                </h3>
-                <div className="space-y-3 sm:space-y-4">
-                  {bedrockAnalytics.improvement_areas.map((area: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="bg-gradient-to-r from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-5 hover:border-yellow-500/50 transition-all hover:shadow-lg hover:shadow-yellow-500/10"
-                    >
-                      <div className="flex items-start gap-3 sm:gap-4">
-                        <div className="mt-0.5 sm:mt-1 p-1.5 sm:p-2 rounded-lg bg-yellow-500/10 flex-shrink-0">
-                          <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
-                            <h4 className="text-base sm:text-lg font-bold text-white">
-                              {area.title}
-                            </h4>
-                            <span
-                              className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wide inline-block ${area.priority === 'high'
-                                ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                                : area.priority === 'medium'
-                                  ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                }`}
-                            >
-                              {area.priority}
-                            </span>
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
+                    Improvement Areas
+                  </h3>
+                  <div className="space-y-3 sm:space-y-4">
+                    {bedrockAnalytics.improvement_areas.map((area: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="bg-gradient-to-r from-slate-800 to-slate-800/50 rounded-lg sm:rounded-xl border border-slate-700 p-4 sm:p-5 hover:border-yellow-500/50 transition-all hover:shadow-lg hover:shadow-yellow-500/10"
+                      >
+                        <div className="flex items-start gap-3 sm:gap-4">
+                          <div className="mt-0.5 sm:mt-1 p-1.5 sm:p-2 rounded-lg bg-yellow-500/10 flex-shrink-0">
+                            <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
                           </div>
-                          <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">{area.detail}</p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
+                              <h4 className="text-base sm:text-lg font-bold text-white">
+                                {area.title}
+                              </h4>
+                              <span
+                                className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wide inline-block ${area.priority === 'high'
+                                  ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                  : area.priority === 'medium'
+                                    ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                                    : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                  }`}
+                              >
+                                {area.priority}
+                              </span>
+                            </div>
+                            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">{area.detail}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Suggested Drills - Enhanced (only for cricket videos) */}
             {bedrockAnalytics.is_cricket_video !== false &&
               bedrockAnalytics.suggested_drills &&
               bedrockAnalytics.suggested_drills.length > 0 && (
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
-                  Suggested Drills
-                </h3>
-                <div className="space-y-2 sm:space-y-3">
-                  {bedrockAnalytics.suggested_drills.map((drill: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="bg-slate-800/70 rounded-lg sm:rounded-xl border border-slate-700 overflow-hidden hover:border-emerald-500/50 transition-all hover:shadow-lg hover:shadow-emerald-500/10"
-                    >
-                      <button
-                        onClick={() => setExpandedDrill(expandedDrill === idx ? null : idx)}
-                        className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-700/50 transition-colors"
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-5 flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
+                    Suggested Drills
+                  </h3>
+                  <div className="space-y-2 sm:space-y-3">
+                    {bedrockAnalytics.suggested_drills.map((drill: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="bg-slate-800/70 rounded-lg sm:rounded-xl border border-slate-700 overflow-hidden hover:border-emerald-500/50 transition-all hover:shadow-lg hover:shadow-emerald-500/10"
                       >
-                        <div className="flex-1 min-w-0 pr-2">
-                          <h4 className="text-base sm:text-lg font-bold text-white mb-1.5 sm:mb-2">
-                            {drill.name}
-                          </h4>
-                          <span className="inline-flex items-center px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] sm:text-xs font-semibold border border-emerald-500/30">
-                            {drill.focus_area}
-                          </span>
-                        </div>
-                        <div className="ml-2 sm:ml-4 flex-shrink-0">
-                          <div
-                            className={`transform transition-transform duration-200 ${expandedDrill === idx ? 'rotate-180' : ''}`}
-                          >
-                            <svg
-                              className="w-6 h-6 text-slate-400"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 9l-7 7-7-7"
-                              />
-                            </svg>
+                        <button
+                          onClick={() => setExpandedDrill(expandedDrill === idx ? null : idx)}
+                          className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-700/50 transition-colors"
+                        >
+                          <div className="flex-1 min-w-0 pr-2">
+                            <h4 className="text-base sm:text-lg font-bold text-white mb-1.5 sm:mb-2">
+                              {drill.name}
+                            </h4>
+                            {/* <span className="inline-flex items-center px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] sm:text-xs font-semibold border border-emerald-500/30">
+                              {drill.focus_area}
+                            </span> */}
                           </div>
-                        </div>
-                      </button>
-                      {expandedDrill === idx && (
-                        <div className="px-4 sm:px-5 pb-4 sm:pb-5 border-t border-slate-700 bg-slate-900/30">
-                          <p className="text-slate-300 text-xs sm:text-sm mt-3 sm:mt-4 leading-relaxed">
-                            {drill.description}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                          <div className="ml-2 sm:ml-4 flex-shrink-0">
+                            <div
+                              className={`transform transition-transform duration-200 ${expandedDrill === idx ? 'rotate-180' : ''}`}
+                            >
+                              <svg
+                                className="w-6 h-6 text-slate-400"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 9l-7 7-7-7"
+                                />
+                              </svg>
+                            </div>
+                          </div>
+                        </button>
+                        {expandedDrill === idx && (
+                          <div className="px-4 sm:px-5 pb-4 sm:pb-5 border-t border-slate-700 bg-slate-900/30">
+                            <p className="text-slate-300 text-xs sm:text-sm mt-3 sm:mt-4 leading-relaxed">
+                              {drill.description}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Explanation - Enhanced (only for cricket videos) */}
             {bedrockAnalytics.is_cricket_video !== false && bedrockAnalytics.explanation && (
