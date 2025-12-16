@@ -17,21 +17,22 @@ const COCO_BONES = [
 ];
 
 // --- 3D POSE DATA PROCESSING ---
-function process2DPoseData(rawData: PoseFrame[]): number[][][] {
+function process2DPoseData(rawData: PoseFrame[]): number[][][][] {
   if (!rawData || rawData.length === 0) return [];
 
-  const processedData: number[][][] = [];
+  const processedData: number[][][][] = [];
   let maxY = -Infinity;
   let minY = Infinity;
 
-  // Find the overall vertical bounds
+  // Find the overall vertical bounds across ALL persons
   rawData.forEach(frame => {
     if (frame.persons && frame.persons.length > 0) {
-      const person = frame.persons[0];
-      person.keypoints.forEach(kp => {
-        const y = kp[1];
-        if (y > maxY) maxY = y;
-        if (y < minY) minY = y;
+      frame.persons.forEach(person => {
+        person.keypoints.forEach(kp => {
+          const y = kp[1];
+          if (y > maxY) maxY = y;
+          if (y < minY) minY = y;
+        });
       });
     }
   });
@@ -41,33 +42,49 @@ function process2DPoseData(rawData: PoseFrame[]): number[][][] {
   const depthFactor = 0.15; // Reduced depth for better proportions
 
   rawData.forEach(frame => {
+    const framePersons: number[][][] = [];
+
     if (frame.persons && frame.persons.length > 0) {
-      const person = frame.persons[0];
-      const keypoints3D: number[][] = person.keypoints.map(kp => {
-        const x = kp[0] * scaleFactor;
-        const y = (maxY - kp[1]) * scaleFactor;
-        const normalizedY = (kp[1] - minY) / height;
-        const z = -(1 - normalizedY) * depthFactor;
-        return [x, y, z];
+      // Process ALL persons in this frame
+      frame.persons.forEach(person => {
+        const keypoints3D: number[][] = person.keypoints.map(kp => {
+          const x = kp[0] * scaleFactor;
+          const y = (maxY - kp[1]) * scaleFactor;
+          const normalizedY = (kp[1] - minY) / height;
+          const z = -(1 - normalizedY) * depthFactor;
+          return [x, y, z];
+        });
+        framePersons.push(keypoints3D);
       });
-      processedData.push(keypoints3D);
     }
+
+    processedData.push(framePersons);
   });
 
-  // Center all points horizontally (X-axis) using the average hip midpoint
+  // Center all points horizontally (X-axis) using the average hip midpoint across ALL persons
   if (processedData.length > 0) {
-    const hipMidPointsX = processedData.map(frame => {
-      const lh = frame[11] ? frame[11][0] : 0;
-      const rh = frame[12] ? frame[12][0] : 0;
-      const count = (frame[11] ? 1 : 0) + (frame[12] ? 1 : 0);
-      return count > 0 ? (lh + rh) / count : 0;
+    const allHipMidPointsX: number[] = [];
+
+    processedData.forEach(framePersons => {
+      framePersons.forEach(personKeypoints => {
+        const lh = personKeypoints[11] ? personKeypoints[11][0] : 0;
+        const rh = personKeypoints[12] ? personKeypoints[12][0] : 0;
+        const count = (personKeypoints[11] ? 1 : 0) + (personKeypoints[12] ? 1 : 0);
+        if (count > 0) {
+          allHipMidPointsX.push((lh + rh) / count);
+        }
+      });
     });
 
-    const avgHipMidX = hipMidPointsX.reduce((sum, x) => sum + x, 0) / hipMidPointsX.length;
+    const avgHipMidX = allHipMidPointsX.length > 0
+      ? allHipMidPointsX.reduce((sum, x) => sum + x, 0) / allHipMidPointsX.length
+      : 0;
 
-    for (const frame of processedData) {
-      for (const kp of frame) {
-        kp[0] -= avgHipMidX;
+    for (const framePersons of processedData) {
+      for (const personKeypoints of framePersons) {
+        for (const kp of personKeypoints) {
+          kp[0] -= avgHipMidX;
+        }
       }
     }
   }
@@ -82,7 +99,7 @@ function AnimatedSkeleton({
   isPlaying,
   fps = 30
 }: {
-  poseData: number[][][],
+  poseData: number[][][][],
   boneConnections: number[][],
   isPlaying: boolean,
   fps?: number
@@ -109,44 +126,60 @@ function AnimatedSkeleton({
   if (totalFrames === 0) return null;
 
   const frameIndex = frameIndexRef.current;
-  const frameData = poseData[frameIndex];
-  
-  if (!frameData) return null;
+  const framePersons = poseData[frameIndex];
 
-  const jointPositions = frameData.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+  if (!framePersons || framePersons.length === 0) return null;
 
-  // Create the lines (bones)
-  const lines = boneConnections.map(([startIdx, endIdx], i) => {
-    const start = jointPositions[startIdx];
-    const end = jointPositions[endIdx];
+  // Colors for different persons
+  const personColors = [
+    { bone: "#facc15", joint: "#34d399" },  // Yellow bones, Green joints (person 1)
+    { bone: "#60a5fa", joint: "#f472b6" },  // Blue bones, Pink joints (person 2)
+    { bone: "#a78bfa", joint: "#fb923c" },  // Purple bones, Orange joints (person 3)
+    { bone: "#4ade80", joint: "#f87171" },  // Green bones, Red joints (person 4)
+  ];
 
-    if (!start || !end) return null;
-
-    return (
-      <Line
-        key={`bone-${i}`}
-        points={[start, end]}
-        color="#facc15"
-        lineWidth={3}
-        transparent
-        opacity={0.8}
-        depthTest={false}
-      />
-    );
-  }).filter(Boolean);
-
-  // Create the spheres (joints)
-  const joints = jointPositions.map((position, i) => (
-    <mesh key={`joint-${i}`} position={position}>
-      <sphereGeometry args={[0.015, 8, 8]} />
-      <meshBasicMaterial color="#34d399" />
-    </mesh>
-  ));
-
+  // Render all persons in the current frame
   return (
     <group ref={groupRef} position={[0, 0, -1.2]}>
-      {joints}
-      {lines}
+      {framePersons.map((personKeypoints, personIdx) => {
+        const jointPositions = personKeypoints.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+        const colors = personColors[personIdx % personColors.length];
+
+        // Create the lines (bones) for this person
+        const lines = boneConnections.map(([startIdx, endIdx], i) => {
+          const start = jointPositions[startIdx];
+          const end = jointPositions[endIdx];
+
+          if (!start || !end) return null;
+
+          return (
+            <Line
+              key={`person-${personIdx}-bone-${i}`}
+              points={[start, end]}
+              color={colors.bone}
+              lineWidth={3}
+              transparent
+              opacity={0.8}
+              depthTest={false}
+            />
+          );
+        }).filter(Boolean);
+
+        // Create the spheres (joints) for this person
+        const joints = jointPositions.map((position, i) => (
+          <mesh key={`person-${personIdx}-joint-${i}`} position={position}>
+            <sphereGeometry args={[0.015, 8, 8]} />
+            <meshBasicMaterial color={colors.joint} />
+          </mesh>
+        ));
+
+        return (
+          <group key={`person-${personIdx}`}>
+            {joints}
+            {lines}
+          </group>
+        );
+      })}
     </group>
   );
 }
@@ -238,12 +271,12 @@ interface ThreeDSkeletonViewProps {
   fps?: number;
 }
 
-export default function ThreeDSkeletonView({ 
-  keypointsData, 
+export default function ThreeDSkeletonView({
+  keypointsData,
   isPlaying,
-  fps = 30 
+  fps = 30
 }: ThreeDSkeletonViewProps) {
-  const [skeletalData, setSkeletalData] = useState<number[][][]>([]);
+  const [skeletalData, setSkeletalData] = useState<number[][][][]>([]);
   const [currentFrame, setCurrentFrame] = useState(0);
 
   // Process pose data when it changes
