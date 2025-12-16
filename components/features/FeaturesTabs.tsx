@@ -14,7 +14,7 @@ export default function FeaturesTabs() {
   const [activeTab, setActiveTab] = useState<TabType>("commentary");
 
   const tabs = [
-    { id: "commentary" as TabType, label: "ball-by-ball Live Commentary", icon: Mic },
+    { id: "commentary" as TabType, label: "Live Commentary", icon: Mic },
     // { id: "multimodel-chat" as TabType, label: "Multimodel Chat", icon: MessageSquareText },
     { id: "video" as TabType, label: "Video Analysis & 3D Replay", icon: Video },
     // { id: "3d-replay-video" as TabType, label: "3D Replay Video", icon: Box },

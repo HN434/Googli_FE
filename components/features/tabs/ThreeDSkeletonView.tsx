@@ -349,9 +349,9 @@ export default function ThreeDSkeletonView({
         <Environment preset="sunset" />
 
         {/* Cricket Ground */}
-        <Suspense fallback={null}>
+        {/* <Suspense fallback={null}>
           <CricketGround />
-        </Suspense>
+        </Suspense> */}
 
         {/* 3D Skeletal Animation */}
         <Suspense fallback={<Loader3D />}>
