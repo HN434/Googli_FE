@@ -15,106 +15,162 @@ const COCO_BONES = [
   [12, 14], [14, 16], // Right Leg (Hip-Knee-Ankle)
   [11, 13], [13, 15] // Left Leg (Hip-Knee-Ankle)
 ];
+const PLAYER_HEIGHT_WORLD = 1.7;
+const CREASE_Z = 1.5;
+const DEPTH_FACTOR = 0.35;
+const PLAYER_X_SPACING = 0.45; // separation for multiple players
 
-// --- 3D POSE DATA PROCESSING ---
+
+// --- 3D POSE DATA PROCESSING WITH DYNAMIC SCALING ---
 function process2DPoseData(rawData: PoseFrame[]): number[][][][] {
-  if (!rawData || rawData.length === 0) return [];
+  if (!rawData.length) return [];
 
-  const processedData: number[][][][] = [];
-  let maxY = -Infinity;
-  let minY = Infinity;
+  const processed: number[][][][] = [];
 
-  // Find the overall vertical bounds across ALL persons
+  const dist2D = (a: number[], b: number[]) =>
+    Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+  const avgPoint = (a?: number[], b?: number[]) =>
+    a && b ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : null;
+
+  // --------------------------------------------------
+  // 🎯 CALCULATE BOUNDING BOX SIZE FOR NORMALIZATION
+  // --------------------------------------------------
+  const getBoundingBoxHeight = (keypoints: number[][]) => {
+    const validY = keypoints.map(kp => kp[1]).filter(y => y > 0);
+    if (validY.length === 0) return 0;
+    return Math.max(...validY) - Math.min(...validY);
+  };
+
+  // Collect bounding box heights for all persons across all frames
+  const bboxHeights: number[] = [];
+
   rawData.forEach(frame => {
-    if (frame.persons && frame.persons.length > 0) {
-      frame.persons.forEach(person => {
-        person.keypoints.forEach(kp => {
-          const y = kp[1];
-          if (y > maxY) maxY = y;
-          if (y < minY) minY = y;
-        });
-      });
-    }
+    frame.persons?.forEach(p => {
+      const bboxHeight = getBoundingBoxHeight(p.keypoints);
+      if (bboxHeight > 0) {
+        bboxHeights.push(bboxHeight);
+      }
+    });
   });
 
-  const height = maxY - minY;
-  const scaleFactor = 0.0018; // Reduced from 0.003 to make skeleton smaller and fit on pitch
-  const depthFactor = 0.15; // Reduced depth for better proportions
+  // Calculate median bounding box height to use as reference
+  bboxHeights.sort((a, b) => a - b);
+  const medianBboxHeight = bboxHeights[Math.floor(bboxHeights.length / 2)] || 500;
 
+  // --------------------------------------------------
+  // 🎯 REFERENCE SCALE CALCULATION
+  // This ensures all players appear at ~1.7m height regardless of camera distance
+  // --------------------------------------------------
+  const TARGET_HEIGHT_WORLD = 1.7; // Standard cricket player height in world units
+  const REFERENCE_SCALE = TARGET_HEIGHT_WORLD / medianBboxHeight;
+
+  console.log(`📊 Dynamic Scaling Info:
+    - Median Bounding Box Height: ${medianBboxHeight.toFixed(2)}px
+    - Reference Scale Factor: ${REFERENCE_SCALE.toFixed(6)}
+    - Target World Height: ${TARGET_HEIGHT_WORLD}m
+  `);
+
+  // --------------------------------------------------
+  // 2️⃣ FRAME PROCESSING WITH NORMALIZATION
+  // --------------------------------------------------
   rawData.forEach(frame => {
     const framePersons: number[][][] = [];
 
-    if (frame.persons && frame.persons.length > 0) {
-      // Process ALL persons in this frame
-      frame.persons.forEach(person => {
-        const keypoints3D: number[][] = person.keypoints.map(kp => {
-          const x = kp[0] * scaleFactor;
-          const y = (maxY - kp[1]) * scaleFactor;
-          const normalizedY = (kp[1] - minY) / height;
-          const z = -(1 - normalizedY) * depthFactor;
-          return [x, y, z];
-        });
-        framePersons.push(keypoints3D);
-      });
-    }
+    frame.persons?.forEach((person, idx) => {
+      const kp = person.keypoints;
 
-    processedData.push(framePersons);
-  });
+      const hipCenter = avgPoint(kp[11], kp[12]);
+      if (!hipCenter) return;
 
-  // Center all points horizontally (X-axis) using the average hip midpoint across ALL persons
-  if (processedData.length > 0) {
-    const allHipMidPointsX: number[] = [];
+      const footY = Math.max(kp[15]?.[1] ?? 0, kp[16]?.[1] ?? 0);
 
-    processedData.forEach(framePersons => {
-      framePersons.forEach(personKeypoints => {
-        const lh = personKeypoints[11] ? personKeypoints[11][0] : 0;
-        const rh = personKeypoints[12] ? personKeypoints[12][0] : 0;
-        const count = (personKeypoints[11] ? 1 : 0) + (personKeypoints[12] ? 1 : 0);
-        if (count > 0) {
-          allHipMidPointsX.push((lh + rh) / count);
-        }
-      });
+      // --------------------------------------------------
+      // 🎯 DYNAMIC PER-PERSON SCALING
+      // Calculate how much this person deviates from the median
+      // --------------------------------------------------
+      const personBboxHeight = getBoundingBoxHeight(kp);
+
+      // Normalization factor: larger bbox = scale down, smaller bbox = scale up
+      const normalizationFactor = medianBboxHeight / (personBboxHeight || medianBboxHeight);
+
+      // Apply reference scale with normalization
+      const dynamicScale = REFERENCE_SCALE * normalizationFactor;
+
+      // Safety clamp to prevent extreme cases
+      const finalScale = THREE.MathUtils.clamp(dynamicScale, 0.001, 0.015);
+
+      console.log(`👤 Person ${idx}: BBox=${personBboxHeight.toFixed(0)}px, Norm=${normalizationFactor.toFixed(3)}, Scale=${finalScale.toFixed(6)}`);
+
+      // ------------------------------------
+      // BASE TRANSFORM WITH DYNAMIC SCALE
+      // ------------------------------------
+      let skeleton = kp.map(([x, y]) => [
+        (x - hipCenter[0]) * finalScale,
+        (footY - y) * finalScale,
+        0
+      ]);
+
+      // ------------------------------------
+      // POSITION ALL PLAYERS AT BATSMAN'S END
+      // First player at center, others spread horizontally AND with depth
+      // ------------------------------------
+      if (idx === 0) {
+        // Main batsman at center of batsman's end
+        skeleton = skeleton.map(([x, y, z]) => [
+          x,
+          y,
+          -CREASE_Z  // Batsman's end (striker position)
+        ]);
+      } else {
+        // Other players positioned with both horizontal and depth spacing
+        const side = idx % 2 === 0 ? 1 : -1;
+        const spacing = Math.ceil(idx / 2);
+
+        skeleton = skeleton.map(([x, y, z]) => [
+          x + side * PLAYER_X_SPACING * spacing,  // Horizontal spacing
+          y,
+          -CREASE_Z - spacing * 0.6  // Depth spacing (slightly behind main batsman)
+        ]);
+      }
+
+      framePersons.push(skeleton);
     });
 
-    const avgHipMidX = allHipMidPointsX.length > 0
-      ? allHipMidPointsX.reduce((sum, x) => sum + x, 0) / allHipMidPointsX.length
-      : 0;
+    processed.push(framePersons);
+  });
 
-    for (const framePersons of processedData) {
-      for (const personKeypoints of framePersons) {
-        for (const kp of personKeypoints) {
-          kp[0] -= avgHipMidX;
-        }
-      }
-    }
-  }
-
-  return processedData;
+  return processed;
 }
+
+
 
 // --- ANIMATED SKELETON COMPONENT WITH INDEPENDENT ANIMATION ---
 function AnimatedSkeleton({
   poseData,
   boneConnections,
   isPlaying,
-  fps = 30
+  fps = 30,
+  playbackSpeed = 1
 }: {
   poseData: number[][][][],
   boneConnections: number[][],
   isPlaying: boolean,
-  fps?: number
+  fps?: number,
+  playbackSpeed?: number
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const frameIndexRef = useRef(0);
   const lastUpdateTimeRef = useRef(0);
   const totalFrames = poseData.length;
 
-  // Independent animation loop
+  // Independent animation loop with playback speed control
   useFrame((state) => {
     if (!isPlaying || totalFrames === 0) return;
 
     const currentTime = state.clock.getElapsedTime();
-    const frameDuration = 1 / fps;
+    // Apply playback speed: lower duration = faster playback
+    const frameDuration = (1 / fps) / playbackSpeed;
 
     // Update frame based on elapsed time
     if (currentTime - lastUpdateTimeRef.current >= frameDuration) {
@@ -140,7 +196,7 @@ function AnimatedSkeleton({
 
   // Render all persons in the current frame
   return (
-    <group ref={groupRef} position={[0, 0, -1.2]}>
+    <group ref={groupRef} >
       {framePersons.map((personKeypoints, personIdx) => {
         const jointPositions = personKeypoints.map(p => new THREE.Vector3(p[0], p[1], p[2]));
         const colors = personColors[personIdx % personColors.length];
@@ -269,12 +325,14 @@ interface ThreeDSkeletonViewProps {
   keypointsData: PoseFrame[];
   isPlaying: boolean;
   fps?: number;
+  playbackSpeed?: number;
 }
 
 export default function ThreeDSkeletonView({
   keypointsData,
   isPlaying,
-  fps = 30
+  fps = 30,
+  playbackSpeed = 1
 }: ThreeDSkeletonViewProps) {
   const [skeletalData, setSkeletalData] = useState<number[][][][]>([]);
   const [currentFrame, setCurrentFrame] = useState(0);
@@ -287,16 +345,17 @@ export default function ThreeDSkeletonView({
     }
   }, [keypointsData]);
 
-  // Track current frame for display (independent of video)
+  // Track current frame for display with playback speed
   useEffect(() => {
     if (!isPlaying || skeletalData.length === 0) return;
 
+    // Apply playback speed to interval
     const interval = setInterval(() => {
       setCurrentFrame(prev => (prev + 1) % skeletalData.length);
-    }, 1000 / fps);
+    }, (1000 / fps) / playbackSpeed);
 
     return () => clearInterval(interval);
-  }, [isPlaying, skeletalData.length, fps]);
+  }, [isPlaying, skeletalData.length, fps, playbackSpeed]);
 
   if (keypointsData.length === 0) {
     return (
@@ -349,9 +408,9 @@ export default function ThreeDSkeletonView({
         <Environment preset="sunset" />
 
         {/* Cricket Ground */}
-        {/* <Suspense fallback={null}>
+        <Suspense fallback={null}>
           <CricketGround />
-        </Suspense> */}
+        </Suspense>
 
         {/* 3D Skeletal Animation */}
         <Suspense fallback={<Loader3D />}>
@@ -361,6 +420,7 @@ export default function ThreeDSkeletonView({
               boneConnections={COCO_BONES}
               isPlaying={isPlaying}
               fps={fps}
+              playbackSpeed={playbackSpeed}
             />
           )}
         </Suspense>
@@ -387,7 +447,7 @@ export default function ThreeDSkeletonView({
           Frame: {currentFrame + 1} / {skeletalData.length}
         </p>
         <p className="text-slate-400 text-[10px] sm:text-xs">
-          {isPlaying ? '▶ Playing' : '⏸ Paused'} • {fps} FPS
+          {isPlaying ? '▶ Playing' : '⏸ Paused'} • {fps} FPS • {playbackSpeed}x speed
         </p>
         <p className="text-slate-400 text-[10px] sm:text-xs">
           Mouse: Rotate • Scroll: Zoom • Right-click: Pan

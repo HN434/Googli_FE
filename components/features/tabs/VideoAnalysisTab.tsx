@@ -612,10 +612,12 @@ export default function VideoAnalysisTab() {
   };
 
   const handlePlaybackSpeedChange = (speed: number) => {
+    setPlaybackSpeed(speed);
+
+    // Apply to video element only if in video mode
     const video = videoRef.current;
-    if (video) {
+    if (video && viewMode === 'video') {
       video.playbackRate = speed;
-      setPlaybackSpeed(speed);
     }
   };
 
@@ -856,6 +858,7 @@ export default function VideoAnalysisTab() {
                 keypointsData={keypointsData}
                 isPlaying={is3DPlaying}
                 fps={calculatedFPS}
+                playbackSpeed={playbackSpeed}
               />
             )}
 
@@ -935,23 +938,21 @@ export default function VideoAnalysisTab() {
                   </span>
                 </div>
 
-                {/* Playback Speed Controls - Inline for Desktop - Only for video mode */}
-                {viewMode === 'video' && (
-                  <div className="hidden md:flex items-center gap-1.5 bg-slate-800 rounded-lg p-1">
-                    {[0.5, 0.75, 1, 1.5, 2].map((speed) => (
-                      <button
-                        key={speed}
-                        onClick={() => handlePlaybackSpeedChange(speed)}
-                        className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${playbackSpeed === speed
-                          ? 'bg-emerald-500 text-white'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-700'
-                          }`}
-                      >
-                        {speed}x
-                      </button>
-                    ))}
-                  </div>
-                )}
+                {/* Playback Speed Controls - Inline for Desktop */}
+                <div className="hidden md:flex items-center gap-1.5 bg-slate-800 rounded-lg p-1">
+                  {[0.5, 0.75, 1, 1.5, 2].map((speed) => (
+                    <button
+                      key={speed}
+                      onClick={() => handlePlaybackSpeedChange(speed)}
+                      className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${playbackSpeed === speed
+                        ? 'bg-emerald-500 text-white'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                        }`}
+                    >
+                      {speed}x
+                    </button>
+                  ))}
+                </div>
 
                 {/* New Video Button Row */}
                 <button
@@ -978,23 +979,21 @@ export default function VideoAnalysisTab() {
                 </button>
               </div>
 
-              {/* Playback Speed Controls - Separate Row for Mobile - Only for video mode */}
-              {viewMode === 'video' && (
-                <div className="flex md:hidden items-center justify-center gap-1.5 bg-slate-800 rounded-lg p-1 w-full">
-                  {[0.5, 0.75, 1, 1.5, 2].map((speed) => (
-                    <button
-                      key={speed}
-                      onClick={() => handlePlaybackSpeedChange(speed)}
-                      className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${playbackSpeed === speed
-                        ? 'bg-emerald-500 text-white'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-700'
-                        }`}
-                    >
-                      {speed}x
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Playback Speed Controls - Separate Row for Mobile */}
+              <div className="flex md:hidden items-center justify-center gap-1.5 bg-slate-800 rounded-lg p-1 w-full">
+                {[0.5, 0.75, 1, 1.5, 2].map((speed) => (
+                  <button
+                    key={speed}
+                    onClick={() => handlePlaybackSpeedChange(speed)}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${playbackSpeed === speed
+                      ? 'bg-emerald-500 text-white'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                      }`}
+                  >
+                    {speed}x
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
