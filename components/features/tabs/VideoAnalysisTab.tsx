@@ -834,7 +834,7 @@ export default function VideoAnalysisTab() {
                     : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
                     }`}
                 >
-                  📹 Pose Analytics
+                  Pose Analytics
                 </button>
                 {/* 3D view is only available when the video is explicitly classified as cricket */}
                 {canShow3DView && (
@@ -845,7 +845,7 @@ export default function VideoAnalysisTab() {
                       : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
                       }`}
                   >
-                    🎯 3D View
+                    3D View
                   </button>
                 )}
               </div>
