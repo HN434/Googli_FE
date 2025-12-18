@@ -6,7 +6,13 @@ import { PoseFrame } from '@/utils/poseUtils';
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/api';
 
 export interface VideoWebSocketMessage {
-    type: 'keypoints' | 'bedrock_analysis' | 'pegasus_analysis' | 'error' | 'complete';
+    type:
+        | 'keypoints'
+        | 'bedrock_analysis'
+        | 'pegasus_analysis'
+        | 'shot_classification'
+        | 'error'
+        | 'complete';
     data?: any;
     message?: string;
 }
@@ -15,6 +21,7 @@ export interface UseVideoWebSocketOptions {
     videoId: string | null;
     onKeypoints?: (keypoints: PoseFrame[]) => void;
     onBedrockAnalytics?: (analytics: any) => void;
+    onShotClassification?: (shot: any) => void;
     onError?: (error: string) => void;
     onComplete?: () => void;
     enabled?: boolean;
@@ -32,6 +39,7 @@ export function useVideoWebSocket({
     videoId,
     onKeypoints,
     onBedrockAnalytics,
+    onShotClassification,
     onError,
     onComplete,
     enabled = true,
@@ -110,11 +118,19 @@ export function useVideoWebSocket({
                             break;
 
                         case 'bedrock_analysis':
-                        case 'pegasus_analysis':
+                        case 'pegasus_analysis': {
                             if (onBedrockAnalytics && message.data) {
                                 onBedrockAnalytics(message.data);
                             }
                             break;
+                        }
+
+                        case 'shot_classification': {
+                            if (onShotClassification && message.data) {
+                                onShotClassification(message.data);
+                            }
+                            break;
+                        }
 
                         case 'complete':
                             console.log('Video processing complete');
