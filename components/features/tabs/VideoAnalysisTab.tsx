@@ -28,6 +28,22 @@ const formatSeconds = (seconds?: number) => {
   return `${mins}:${secs}`;
 };
 
+const getSkillLevel = (overallScore?: number): string => {
+  if (overallScore === undefined || Number.isNaN(overallScore)) {
+    return "Unknown";
+  }
+  if (overallScore >= 0 && overallScore <= 3) {
+    return "Beginner";
+  }
+  if (overallScore >= 4 && overallScore <= 6) {
+    return "Intermediate";
+  }
+  if (overallScore >= 7 && overallScore <= 10) {
+    return "Professional";
+  }
+  return "Unknown";
+};
+
 const normalizeAnalyticsPayload = (payload: any) => {
   if (!payload) return null;
 
@@ -97,6 +113,7 @@ export default function VideoAnalysisTab() {
   const [videoDuration, setVideoDuration] = useState<number>(0);
   const [calculatedFPS, setCalculatedFPS] = useState<number>(30);
   const [bedrockAnalytics, setBedrockAnalytics] = useState<any>(null);
+  const [shotClassification, setShotClassification] = useState<any | null>(null);
   const [expandedDrill, setExpandedDrill] = useState<number | null>(null);
   const [wsEnabled, setWsEnabled] = useState(false);
   const [viewMode, setViewMode] = useState<'video' | '3d'>('video');
@@ -132,6 +149,10 @@ export default function VideoAnalysisTab() {
       const normalized = normalizeAnalyticsPayload(analytics);
       setBedrockAnalytics(normalized);
       // Do not mark analysis complete yet; wait until pose/keypoints are also ready
+    }, []),
+    onShotClassification: useCallback((shot: any) => {
+      console.log('Received shot classification via WebSocket', shot);
+      setShotClassification(shot);
     }, []),
     onError: useCallback((errorMsg: string) => {
       console.error('WebSocket error:', errorMsg);
@@ -1037,7 +1058,28 @@ export default function VideoAnalysisTab() {
               </div>
             )}
 
-            {/* Summary Section - Enhanced (only for cricket videos) */}
+          {/* Shot classification summary (model-based, separate from Pegasus) */}
+          {shotClassification && (
+            <div className="mb-4 sm:mb-6 bg-slate-900/70 border border-emerald-600/40 rounded-xl sm:rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex-1">
+                <h3 className="text-base sm:text-lg font-semibold text-emerald-300 mb-1">
+                  Shot classification
+                </h3>
+                <p className="text-sm sm:text-base text-slate-200">
+                  {shotClassification.shot_label || 'Unknown shot'}
+                </p>
+              </div>
+              {typeof shotClassification.confidence_percent === 'number' && (
+                <div className="flex items-center justify-center px-4 py-2 rounded-full bg-emerald-600/20 border border-emerald-500/40">
+                  <span className="text-sm sm:text-base font-semibold text-emerald-300">
+                    {shotClassification.confidence_percent.toFixed(1)}%
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Summary Section - Enhanced (only for cricket videos) */}
             {bedrockAnalytics.is_cricket_video !== false && (
               <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-900/20 rounded-xl sm:rounded-2xl border border-emerald-500/30 p-5 sm:p-8 shadow-2xl overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 sm:w-64 sm:h-64 bg-emerald-500/5 rounded-full blur-3xl"></div>
@@ -1048,7 +1090,7 @@ export default function VideoAnalysisTab() {
                     </h3>
                     <div className="flex items-center gap-3">
                       <span className="inline-flex items-center px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs sm:text-sm font-semibold border border-emerald-500/30">
-                        {bedrockAnalytics.summary?.skill_level}
+                        {getSkillLevel(bedrockAnalytics.summary?.overall_score)}
                       </span>
                     </div>
                   </div>
