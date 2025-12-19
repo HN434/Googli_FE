@@ -24,6 +24,7 @@ const POSE_CONNECTIONS = [
 
 const HUMAN_SCALE = 1.8;
 const HUMAN_Y_OFFSET = 0;
+const DEPTH_SCALE = 0.5; // Reduced depth scale to prevent stretching in side view
 
 // TypeScript Interfaces
 interface Landmark {
@@ -54,7 +55,7 @@ const getLandmarkBasePosition = (landmark: Landmark): THREE.Vector3 => {
   return new THREE.Vector3(
     (landmark.x - 0.5) * HUMAN_SCALE,
     (1 - landmark.y) * HUMAN_SCALE + HUMAN_Y_OFFSET,
-    -landmark.z * HUMAN_SCALE
+    -landmark.z * DEPTH_SCALE
   );
 };
 
@@ -188,11 +189,211 @@ function AnimatedSkeleton({
     </group>
   );
 
+  // Helper function to create body part between two joints
+  const createBodyPart = (
+    startIdx: number,
+    endIdx: number,
+    radius: number,
+    color: number,
+    key: string
+  ) => {
+    const startLandmark = landmarks[startIdx];
+    const endLandmark = landmarks[endIdx];
+    const startVisible = startLandmark?.visibility === undefined || startLandmark?.visibility >= 0.1;
+    const endVisible = endLandmark?.visibility === undefined || endLandmark?.visibility >= 0.1;
+
+    if (!startVisible || !endVisible || !showBodyParts) return null;
+
+    const startPos = positions[startIdx];
+    const endPos = positions[endIdx];
+
+    const midpoint = new THREE.Vector3()
+      .addVectors(startPos, endPos)
+      .multiplyScalar(0.5);
+
+    const distance = startPos.distanceTo(endPos);
+    const direction = new THREE.Vector3().subVectors(endPos, startPos).normalize();
+
+    // Calculate rotation to align cylinder with direction
+    const axis = new THREE.Vector3(0, 1, 0);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(axis, direction);
+
+    return (
+      <mesh key={key} position={midpoint} quaternion={quaternion}>
+        <capsuleGeometry args={[radius, distance * 0.8, 8, 16]} />
+        <meshPhongMaterial color={color} shininess={10} />
+      </mesh>
+    );
+  };
+
+  // Body parts
+  const bodyParts = showBodyParts ? (
+    <group>
+      {/* Head */}
+      {landmarks[0] && (landmarks[0].visibility ?? 0) >= 0.1 && (
+        <mesh position={positions[0]}>
+          <sphereGeometry args={[0.11, 32, 32]} />
+          <meshPhongMaterial color={0xFFDBB3} shininess={20} />
+        </mesh>
+      )}
+
+      {/* Helmet */}
+      {showHelmet && landmarks[0] && (landmarks[0].visibility ?? 0) >= 0.1 && (
+        <group position={[positions[0].x, positions[0].y + 0.02, positions[0].z]}>
+          <mesh rotation={[Math.PI, 0, 0]}>
+            <sphereGeometry args={[0.13, 32, 32, 0, Math.PI * 2, 0, Math.PI * 0.6]} />
+            <meshPhongMaterial color={0x1a1a1a} shininess={50} />
+          </mesh>
+          {/* Helmet grille */}
+          <mesh position={[0, -0.02, 0.12]}>
+            <boxGeometry args={[0.14, 0.12, 0.02]} />
+            <meshPhongMaterial color={0x333333} transparent opacity={0.7} shininess={80} />
+          </mesh>
+        </group>
+      )}
+
+      {/* Torso */}
+      {landmarks[11] && landmarks[12] && landmarks[23] && landmarks[24] && (
+        (() => {
+          const shoulderCenter = new THREE.Vector3()
+            .addVectors(positions[11], positions[12])
+            .multiplyScalar(0.5);
+          const hipCenter = new THREE.Vector3()
+            .addVectors(positions[23], positions[24])
+            .multiplyScalar(0.5);
+          const torsoCenter = new THREE.Vector3()
+            .addVectors(shoulderCenter, hipCenter)
+            .multiplyScalar(0.5);
+          const torsoDirection = new THREE.Vector3()
+            .subVectors(shoulderCenter, hipCenter)
+            .normalize();
+          const axis = new THREE.Vector3(0, 1, 0);
+          const quaternion = new THREE.Quaternion().setFromUnitVectors(axis, torsoDirection);
+          const torsoHeight = shoulderCenter.distanceTo(hipCenter);
+
+          return (
+            <mesh position={torsoCenter} quaternion={quaternion}>
+              <capsuleGeometry args={[0.15, torsoHeight * 0.8, 8, 16]} />
+              <meshPhongMaterial color={0xFFFFFF} shininess={10} />
+            </mesh>
+          );
+        })()
+      )}
+
+      {/* Arms - Upper */}
+      {createBodyPart(11, 13, 0.05, 0xFFFFFF, 'left-upper-arm')}
+      {createBodyPart(12, 14, 0.05, 0xFFFFFF, 'right-upper-arm')}
+
+      {/* Arms - Forearms */}
+      {createBodyPart(13, 15, 0.04, 0xFFDBB3, 'left-forearm')}
+      {createBodyPart(14, 16, 0.04, 0xFFDBB3, 'right-forearm')}
+
+      {/* Hands with gloves */}
+      {landmarks[15] && (landmarks[15].visibility ?? 0) >= 0.1 && (
+        <mesh position={positions[15]}>
+          <sphereGeometry args={[0.06, 12, 12]} />
+          <meshPhongMaterial color={0xF5F5DC} shininess={5} />
+        </mesh>
+      )}
+      {landmarks[16] && (landmarks[16].visibility ?? 0) >= 0.1 && (
+        <mesh position={positions[16]}>
+          <sphereGeometry args={[0.06, 12, 12]} />
+          <meshPhongMaterial color={0xF5F5DC} shininess={5} />
+        </mesh>
+      )}
+
+      {/* Legs - Thighs */}
+      {createBodyPart(23, 25, 0.08, 0xFFFFFF, 'left-thigh')}
+      {createBodyPart(24, 26, 0.08, 0xFFFFFF, 'right-thigh')}
+
+      {/* Legs - Shins with pads */}
+      {createBodyPart(25, 27, 0.06, 0xF0F0F0, 'left-shin')}
+      {createBodyPart(26, 28, 0.06, 0xF0F0F0, 'right-shin')}
+
+      {/* Feet - Cricket shoes */}
+      {landmarks[27] && (landmarks[27].visibility ?? 0) >= 0.1 && (
+        <mesh position={positions[27]}>
+          <boxGeometry args={[0.08, 0.06, 0.12]} />
+          <meshPhongMaterial color={0xFFFFFF} shininess={30} />
+        </mesh>
+      )}
+      {landmarks[28] && (landmarks[28].visibility ?? 0) >= 0.1 && (
+        <mesh position={positions[28]}>
+          <boxGeometry args={[0.08, 0.06, 0.12]} />
+          <meshPhongMaterial color={0xFFFFFF} shininess={30} />
+        </mesh>
+      )}
+    </group>
+  ) : null;
+
+  // Cricket Bat
+  const cricketBat = showBat && landmarks[15] && landmarks[16] ? (
+    (() => {
+      const leftWrist = landmarks[15];
+      const rightWrist = landmarks[16];
+      const leftVisible = (leftWrist.visibility ?? 0) >= 0.1;
+      const rightVisible = (rightWrist.visibility ?? 0) >= 0.1;
+
+      if (!leftVisible && !rightVisible) return null;
+
+      // Calculate bat position between hands (weighted toward bottom hand)
+      let batPosition: THREE.Vector3;
+      if (leftVisible && rightVisible) {
+        const bottomHand = positions[16].clone();
+        const topHand = positions[15].clone();
+        batPosition = bottomHand.multiplyScalar(0.7).add(topHand.multiplyScalar(0.3));
+        batPosition.y -= 0.1;
+      } else if (leftVisible) {
+        batPosition = positions[15].clone();
+        batPosition.y -= 0.12;
+      } else {
+        batPosition = positions[16].clone();
+        batPosition.y -= 0.12;
+      }
+
+      // Calculate bat orientation
+      let batRotation: THREE.Euler;
+      if (leftVisible && rightVisible) {
+        const handAxis = new THREE.Vector3()
+          .subVectors(positions[15], positions[16])
+          .normalize();
+        // Simple rotation for demo
+        batRotation = new THREE.Euler(-Math.PI / 6, 0, 0);
+      } else {
+        batRotation = new THREE.Euler(-Math.PI / 6, 0, 0);
+      }
+
+      return (
+        <group position={batPosition} rotation={batRotation}>
+          {/* Bat blade */}
+          <mesh position={[0, -0.43, 0]}>
+            <boxGeometry args={[0.108, 0.86, 0.04]} />
+            <meshPhongMaterial color={0xD4A574} shininess={15} />
+          </mesh>
+
+          {/* Sweet spot marking */}
+          <mesh position={[0, -0.3, 0.021]}>
+            <planeGeometry args={[0.09, 0.15]} />
+            <meshBasicMaterial color={0xA0826D} transparent opacity={0.3} />
+          </mesh>
+
+          {/* Bat handle */}
+          <mesh position={[0, 0.265, 0]}>
+            <cylinderGeometry args={[0.018, 0.025, 0.33, 12]} />
+            <meshPhongMaterial color={0x8B4513} shininess={10} />
+          </mesh>
+        </group>
+      );
+    })()
+  ) : null;
+
   return (
     <group>
       {pitch}
       {joints}
       {bones}
+      {bodyParts}
+      {cricketBat}
     </group>
   );
 }
