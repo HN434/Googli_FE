@@ -1058,28 +1058,34 @@ export default function VideoAnalysisTab() {
               </div>
             )}
 
-          {/* Shot classification summary (model-based, separate from Pegasus) */}
-          {shotClassification && (
-            <div className="mb-4 sm:mb-6 bg-slate-900/70 border border-emerald-600/40 rounded-xl sm:rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="flex-1">
-                <h3 className="text-base sm:text-lg font-semibold text-emerald-300 mb-1">
-                  Shot classification
-                </h3>
-                <p className="text-sm sm:text-base text-slate-200">
-                  {shotClassification.shot_label || 'Unknown shot'}
-                </p>
-              </div>
-              {typeof shotClassification.confidence_percent === 'number' && (
-                <div className="flex items-center justify-center px-4 py-2 rounded-full bg-emerald-600/20 border border-emerald-500/40">
-                  <span className="text-sm sm:text-base font-semibold text-emerald-300">
-                    {shotClassification.confidence_percent.toFixed(1)}%
-                  </span>
+            {/* Shot classification summary (model-based, separate from Pegasus) */}
+            {shotClassification && (
+              <div className="mb-4 sm:mb-6 bg-slate-900/70 border border-emerald-600/40 rounded-xl sm:rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="flex-1">
+                  <h3 className="text-base sm:text-lg font-semibold text-emerald-300 mb-1">
+                    Shot classification
+                  </h3>
+                  <p className="text-sm sm:text-base text-slate-200">
+                    {shotClassification.shot_label
+                      ? shotClassification.shot_label
+                        .replace(/[-_]/g, ' ')
+                        .split(' ')
+                        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                        .join(' ')
+                      : 'Unknown shot'}
+                  </p>
                 </div>
-              )}
-            </div>
-          )}
+                {typeof shotClassification.confidence_percent === 'number' && (
+                  <div className="flex items-center justify-center px-4 py-2 rounded-full bg-emerald-600/20 border border-emerald-500/40">
+                    <span className="text-sm sm:text-base font-semibold text-emerald-300">
+                      {shotClassification.confidence_percent.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
-          {/* Summary Section - Enhanced (only for cricket videos) */}
+            {/* Summary Section - Enhanced (only for cricket videos) */}
             {bedrockAnalytics.is_cricket_video !== false && (
               <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-900/20 rounded-xl sm:rounded-2xl border border-emerald-500/30 p-5 sm:p-8 shadow-2xl overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 sm:w-64 sm:h-64 bg-emerald-500/5 rounded-full blur-3xl"></div>
