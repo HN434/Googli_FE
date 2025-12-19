@@ -18,7 +18,7 @@ export default function FeaturesTabs() {
     // { id: "multimodel-chat" as TabType, label: "Multimodel Chat", icon: MessageSquareText },
     { id: "video" as TabType, label: "Video Analysis & 3D Replay", icon: Video },
     // { id: "3d-replay-video" as TabType, label: "3D Replay Video", icon: Box },
-    // { id: "3d-video" as TabType, label: "3D Video", icon: Box },
+    { id: "3d-video" as TabType, label: "3D Video", icon: Box },
   ];
 
   return (
@@ -50,7 +50,7 @@ export default function FeaturesTabs() {
           {activeTab === "commentary" && <CommentaryTab />}
           {/* {activeTab === "3d-replay-video" && <PredictionsTab />} */}
           {activeTab === "multimodel-chat" && <MultiModelChat />}
-          {/* {activeTab === "3d-video" && <ThreeDVideo />} */}
+          {activeTab === "3d-video" && <ThreeDVideo />}
         </div>
       </div>
     </section>

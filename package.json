@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.709.0",
+    "@mediapipe/camera_utils": "^0.3.1675466862",
+    "@mediapipe/drawing_utils": "^0.3.1675466124",
+    "@mediapipe/pose": "^0.5.1675469404",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.2",
     "aws-sdk": "^2.1692.0",

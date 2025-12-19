@@ -1,200 +1,203 @@
 "use client";
 
-import { Suspense, useRef, useState, useMemo } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-// Import Line for drawing the skeleton bones
-import { OrbitControls, useGLTF, Environment, PerspectiveCamera, Line } from "@react-three/drei";
+import { Suspense, useRef, useState, useMemo, useEffect, useCallback } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
 import { Button } from "@/components/ui/Button";
 import * as THREE from "three";
-import JOE_ROOT_POSE_DATA from '@/public/JOE_ROOT_BATTING_MASTERCLASS_keypoints_1.json';
 
-// --- TypeScript Interfaces for the JSON Data Structure ---
-interface Keypoint {
-  keypoints: [number, number][]; // Array of [x, y] tuples
-  scores: number[];
-  person_id: number;
-  bbox: number[];
-  mean_confidence: number;
-}
-
-interface FrameData {
-  frame_number: number;
-  num_persons: number;
-  persons: Keypoint[];
-}
-
-// Define the expected structure of the props
-interface ThreeDVideoProps {
-  initialPoseData: FrameData[];
-}
-
-// --- 1. KEYPOINT TOPOLOGY (COCO 17-point) ---
-// Connections (Bones) based on 0-indexing for COCO 17 joints:
-// [0:Nose, 1:L-Eye, 2:R-Eye, 3:L-Ear, 4:R-Ear, 5:L-Shoulder, 6:R-Shoulder, 7:L-Elbow, 8:R-Elbow, 9:L-Wrist, 10:R-Wrist, 11:L-Hip, 12:R-Hip, 13:L-Knee, 14:R-Knee, 15:L-Ankle, 16:R-Ankle]
-const COCO_BONES = [
-  [0, 1], [0, 2], [1, 3], [2, 4], // Head/Face
-  [5, 6], [5, 11], [6, 12], [11, 12], // Torso/Hips
-  [6, 8], [8, 10], // Right Arm (Shoulder-Elbow-Wrist)
-  [5, 7], [7, 9], // Left Arm (Shoulder-Elbow-Wrist)
-  [12, 14], [14, 16], // Right Leg (Hip-Knee-Ankle)
-  [11, 13], [13, 15] // Left Leg (Hip-Knee-Ankle)
+// MediaPipe Pose connections for skeleton (33 landmarks)
+const POSE_CONNECTIONS = [
+  // Face
+  [0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8], [9, 10],
+  // Torso
+  [11, 12], [11, 23], [12, 24], [23, 24],
+  // Left arm
+  [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
+  // Right arm
+  [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+  // Left leg
+  [23, 25], [25, 27], [27, 29], [27, 31], [29, 31],
+  // Right leg
+  [24, 26], [26, 28], [28, 30], [28, 32], [30, 32]
 ];
 
-// --- 2. DATA PROCESSING FUNCTION (Simulated 2D-to-3D Lifting) ---
-/**
- * Processes 2D keypoint data into normalized 3D coordinates for animation.
- */
-function process2DPoseData() {
-  if (!JOE_ROOT_POSE_DATA || JOE_ROOT_POSE_DATA.length === 0) return [];
+const HUMAN_SCALE = 1.8;
+const HUMAN_Y_OFFSET = 0;
 
-  const processedData: number[][][] = [];
-  let maxY = -Infinity;
-  let minY = Infinity;
-
-  // Find the overall vertical bounds
-  JOE_ROOT_POSE_DATA.forEach(frame => {
-    frame.persons.forEach(person => {
-      person.keypoints.forEach(kp => {
-        const y = kp[1];
-        if (y > maxY) maxY = y;
-        if (y < minY) minY = y;
-      });
-    });
-  });
-
-  const height = maxY - minY;
-  // Adjust these factors to control the scene's scale and pseudo-depth effect
-  const scaleFactor = 0.01;
-  const depthFactor = 0.5;
-
-  JOE_ROOT_POSE_DATA.forEach(frame => {
-    if (frame.persons.length > 0) {
-      const person = frame.persons[0];
-      const keypoints3D: number[][] = person.keypoints.map(kp => {
-        const x = kp[0] * scaleFactor;
-        // Invert Y axis for world space (top of screen = +Y, bottom = -Y or 0)
-        const y = (maxY - kp[1]) * scaleFactor;
-
-        // Simple 2D-to-3D lift approximation: depth (Z) based on screen Y
-        const normalizedY = (kp[1] - minY) / height;
-        // Z is slightly negative (into the screen) for joints closer to the camera (lower Y/closer to ground)
-        const z = -(1 - normalizedY) * depthFactor;
-
-        // Return coordinates as [x, y, z]
-        return [x, y, z];
-      });
-      processedData.push(keypoints3D);
-    }
-  });
-
-  // Center all points horizontally (X-axis) using the average hip midpoint
-  if (processedData.length > 0) {
-    // Indices 11 (Left Hip) and 12 (Right Hip) for COCO
-    const hipMidPointsX = processedData.map(frame => {
-      const lh = frame[11] ? frame[11][0] : 0;
-      const rh = frame[12] ? frame[12][0] : 0;
-      // Use a default value if hips aren't perfectly detected
-      const count = (frame[11] ? 1 : 0) + (frame[12] ? 1 : 0);
-      return count > 0 ? (lh + rh) / count : 0;
-    });
-
-    const avgHipMidX = hipMidPointsX.reduce((sum, x) => sum + x, 0) / hipMidPointsX.length;
-
-    for (const frame of processedData) {
-      for (const kp of frame) {
-        kp[0] -= avgHipMidX; // Apply offset
-      }
-    }
-  }
-
-  return processedData;
+// TypeScript Interfaces
+interface Landmark {
+  x: number;
+  y: number;
+  z: number;
+  visibility?: number;
 }
 
+interface PoseFrame {
+  landmarks?: Landmark[];
+  landmarksArray?: number[];
+  timestamp?: number;
+  confidence?: number;
+}
 
-// --- 3. ANIMATED SKELETON COMPONENT (Custom R3F Element) ---
-// Renders the 3D points and lines and handles the animation loop
-function AnimatedSkeleton({ poseData, boneConnections }: { poseData: number[][][], boneConnections: number[][] }) {
-  const [frameIndex, setFrameIndex] = useState(0);
-  const totalFrames = poseData.length;
+interface AnimatedSkeletonProps {
+  poseData: PoseFrame[];
+  currentFrame: number;
+  showSkeleton: boolean;
+  showBodyParts: boolean;
+  showBat: boolean;
+  showHelmet: boolean;
+}
 
-  useFrame(() => {
-    // Control animation speed (e.g., advance every 1 frame for ~60FPS animation)
-    if (totalFrames > 0) {
-      setFrameIndex((prevIndex) => (prevIndex + 1) % totalFrames);
+// Helper function to convert landmark to 3D position
+const getLandmarkBasePosition = (landmark: Landmark): THREE.Vector3 => {
+  return new THREE.Vector3(
+    (landmark.x - 0.5) * HUMAN_SCALE,
+    (1 - landmark.y) * HUMAN_SCALE + HUMAN_Y_OFFSET,
+    -landmark.z * HUMAN_SCALE
+  );
+};
+
+// Normalize landmarks from different formats
+const normalizeLandmarks = (frame: PoseFrame): Landmark[] | null => {
+  if (!frame) return null;
+
+  if (frame.landmarks && frame.landmarks.length > 0) {
+    return frame.landmarks;
+  }
+
+  if (frame.landmarksArray && frame.landmarksArray.length === 33 * 4) {
+    const landmarks: Landmark[] = [];
+    for (let i = 0; i < 33; i++) {
+      landmarks.push({
+        x: frame.landmarksArray[i * 4],
+        y: frame.landmarksArray[i * 4 + 1],
+        z: frame.landmarksArray[i * 4 + 2],
+        visibility: frame.landmarksArray[i * 4 + 3]
+      });
     }
-  });
+    return landmarks;
+  }
 
-  if (totalFrames === 0 || !poseData[frameIndex]) return null;
+  return null;
+};
 
-  const currentFrame = poseData[frameIndex];
+// Animated 3D Skeleton Component with Cricket Equipment
+function AnimatedSkeleton({
+  poseData,
+  currentFrame,
+  showSkeleton,
+  showBodyParts,
+  showBat,
+  showHelmet
+}: AnimatedSkeletonProps) {
+  const jointsRef = useRef<THREE.Mesh[]>([]);
+  const bonesRef = useRef<THREE.Mesh[]>([]);
+  const bodyPartsRef = useRef<{ [key: string]: THREE.Mesh | THREE.Group }>({});
 
-  // Convert raw 3D array points to THREE.Vector3 objects
-  const jointPositions = currentFrame.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+  if (!poseData || poseData.length === 0) return null;
 
-  // Create the lines (bones)
-  const lines = boneConnections.map(([startIdx, endIdx], i) => {
-    const start = jointPositions[startIdx];
-    const end = jointPositions[endIdx];
+  const frame = poseData[currentFrame];
+  const landmarks = normalizeLandmarks(frame);
 
-    // Safety check for valid indices (in case topology or detection fails)
-    if (!start || !end) return null;
+  if (!landmarks) return null;
+
+  // Convert landmarks to 3D positions
+  const positions = landmarks.map(landmark => getLandmarkBasePosition(landmark));
+
+  // Create joints (spheres)
+  const joints = positions.map((position, i) => {
+    const landmark = landmarks[i];
+    const isVisible = landmark.visibility === undefined || landmark.visibility >= 0.1;
+
+    if (!isVisible) return null;
+
+    let jointRadius = 0.03;
+    if (i === 0) jointRadius = 0.06; // Head
+    else if ([11, 12, 23, 24].includes(i)) jointRadius = 0.04; // Major joints
+    else if ([13, 14, 15, 16].includes(i)) jointRadius = 0.035; // Elbows and wrists
+    else if ([25, 26, 27, 28].includes(i)) jointRadius = 0.04; // Knees and ankles
+
+    const color = new THREE.Color();
+    const visibility = landmark.visibility ?? 0;
+    if (visibility > 0.8) color.setRGB(0, 1, 0);
+    else if (visibility > 0.5) color.setRGB(0, 1, 1);
+    else color.setRGB(1, 1, 0);
+
+    return (
+      <mesh key={`joint-${i}`} position={position} visible={showSkeleton}>
+        <sphereGeometry args={[jointRadius, 16, 16]} />
+        <meshPhongMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={0.4}
+          shininess={80}
+        />
+      </mesh>
+    );
+  }).filter(Boolean);
+
+  // Create bones (lines connecting joints)
+  const bones = POSE_CONNECTIONS.map(([start, end], i) => {
+    const startLandmark = landmarks[start];
+    const endLandmark = landmarks[end];
+    const startVisible = startLandmark.visibility === undefined || startLandmark.visibility >= 0.1;
+    const endVisible = endLandmark.visibility === undefined || endLandmark.visibility >= 0.1;
+
+    if (!startVisible || !endVisible || !showSkeleton) return null;
+
+    const startPos = positions[start];
+    const endPos = positions[end];
 
     return (
       <Line
         key={`bone-${i}`}
-        points={[start, end]}
-        color="#facc15" // Yellow/Gold for visibility
+        points={[startPos, endPos]}
+        color="#00aaff"
         lineWidth={3}
-        // Material props for depth handling
         transparent
-        opacity={0.8}
-        // Depth-related rendering hint
-        depthTest={false}
+        opacity={0.95}
       />
     );
   }).filter(Boolean);
 
-  // Create the spheres (joints)
-  const joints = jointPositions.map((position, i) => (
-    <mesh key={`joint-${i}`} position={position}>
-      <sphereGeometry args={[0.04, 8, 8]} /> {/* Joint size */}
-      <meshBasicMaterial color="#34d399" /> // Green for joints
-    </mesh>
-  ));
+  // Cricket Pitch
+  const pitch = (
+    <group>
+      {/* Ground */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+        <planeGeometry args={[30, 30]} />
+        <meshLambertMaterial color={0x2d5016} side={THREE.DoubleSide} />
+      </mesh>
 
-  // 
+      {/* Pitch strip */}
+      <mesh position={[0, 0.01, 0]} receiveShadow castShadow>
+        <boxGeometry args={[1.5, 0.02, 22]} />
+        <meshLambertMaterial color={0x8B7355} />
+      </mesh>
+
+      {/* Creases */}
+      <mesh position={[0, 0.02, -2]}>
+        <boxGeometry args={[1.5, 0.03, 0.05]} />
+        <meshLambertMaterial color={0xffffff} />
+      </mesh>
+      <mesh position={[0, 0.02, 0.78]}>
+        <boxGeometry args={[1.5, 0.03, 0.05]} />
+        <meshLambertMaterial color={0xffffff} />
+      </mesh>
+    </group>
+  );
 
   return (
-    <group position={[0, 0.5, 0]}> {/* Lift skeleton slightly off the ground plane */}
+    <group>
+      {pitch}
       {joints}
-      {lines}
+      {bones}
     </group>
   );
 }
 
-
-// --- 4. GLB Model Loader Component (Original, converted to TS) ---
-function Model({ url }: { url: string }) {
-  const modelRef = useRef<THREE.Group>(null);
-  const { scene } = useGLTF(url);
-
-  useFrame((state, delta) => {
-    if (modelRef.current) {
-      modelRef.current.rotation.y += delta * 0.2;
-    }
-  });
-
-  return (
-    <primitive
-      ref={modelRef}
-      object={scene}
-      scale={1}
-      position={[0, 0, 0]}
-    />
-  );
-}
-
-// Loading fallback component
+// Loading fallback
 function Loader() {
   return (
     <mesh>
@@ -204,183 +207,530 @@ function Loader() {
   );
 }
 
+// Scene setup component
+function SceneSetup() {
+  return (
+    <>
+      {/* Lights */}
+      <ambientLight intensity={0.5} />
+      <directionalLight
+        position={[10, 20, 10]}
+        intensity={1.2}
+        castShadow
+        shadow-camera-left={-10}
+        shadow-camera-right={10}
+        shadow-camera-top={10}
+        shadow-camera-bottom={-10}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+      />
+      <directionalLight position={[-5, 8, -5]} intensity={0.4} color={0x88ccff} />
+      <pointLight position={[-10, -10, -5]} intensity={0.3} />
 
-// --- 5. MAIN COMPONENT (Updated with Data Loading and State) ---
+      {/* Grid Helper */}
+      <gridHelper args={[30, 30, "#1f2937", "#374151"]} />
+    </>
+  );
+}
+
+// Main Component
 export default function ThreeDVideo() {
-  // Process the raw 2D data into a 3D animation array only once
-  const skeletalData = useMemo(() => process2DPoseData(), []);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string>("");
+  const [poseData, setPoseData] = useState<PoseFrame[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [cameraView, setCameraView] = useState<'front' | 'side' | 'top' | 'free'>('side');
+  const [errorMessage, setErrorMessage] = useState<string>("");
 
-  const [glbModelUrl, setGlbModelUrl] = useState<string>("/models/sample.glb");
-  const [isLoading, setIsLoading] = useState(false);
+  // Display options
+  const [showSkeleton, setShowSkeleton] = useState(true);
+  const [showBodyParts, setShowBodyParts] = useState(true);
+  const [showBat, setShowBat] = useState(true);
+  const [showHelmet, setShowHelmet] = useState(true);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const playbackIntervalRef = useRef<number | null>(null);
+  const cameraControlsRef = useRef<any>(null);
 
-  // Set default view mode to skeletal animation
-  const [viewMode, setViewMode] = useState<'glb' | 'skeletal'>('skeletal');
-
-  // Logic to handle GLB file upload (unchanged)
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle video file upload
+  const handleVideoUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && file.name.endsWith(".glb")) {
-      const url = URL.createObjectURL(file);
-      setIsLoading(true);
-      setGlbModelUrl(url);
-      setViewMode('glb');
-      setTimeout(() => setIsLoading(false), 1000);
-    } else {
-      alert("Please upload a valid .glb file");
+    if (!file) return;
+
+    setErrorMessage("");
+
+    // Basic file validation
+    if (!file.type.startsWith("video/")) {
+      setErrorMessage("Please upload a valid video file");
+      return;
+    }
+
+    const maxSize = 50 * 1024 * 1024; // 50 MB
+    if (file.size > maxSize) {
+      setErrorMessage(`Video file size (${(file.size / (1024 * 1024)).toFixed(2)} MB) must be less than 50 MB`);
+      return;
+    }
+
+    // Create video URL for validation
+    const url = URL.createObjectURL(file);
+
+    // Validate video duration
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+
+    video.onloadedmetadata = () => {
+      const duration = video.duration;
+
+      if (duration < 10) {
+        setErrorMessage(`Video duration (${duration.toFixed(1)}s) is too short. Minimum is 10 seconds.`);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      if (duration > 60) {
+        setErrorMessage(`Video duration (${duration.toFixed(1)}s) is too long. Maximum is 60 seconds.`);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      // Video is valid
+      setVideoFile(file);
+      setVideoUrl(url);
+      setPoseData([]);
+      setCurrentFrame(0);
+      setErrorMessage("");
+    };
+
+    video.onerror = () => {
+      setErrorMessage("Failed to load video. Please try a different file.");
+      URL.revokeObjectURL(url);
+    };
+
+    video.src = url;
+  }, []);
+
+  // Process video to extract pose data using MediaPipe
+  const processVideo = useCallback(async () => {
+    if (!videoFile || !videoRef.current) return;
+
+    setIsProcessing(true);
+    setProcessingProgress(0);
+    setErrorMessage("");
+
+    try {
+      const video = videoRef.current;
+
+      // Wait for video metadata
+      if (video.readyState < 2) {
+        await new Promise((resolve) => {
+          video.addEventListener('loadeddata', () => resolve(null), { once: true });
+        });
+      }
+
+      console.log('Starting MediaPipe pose detection...');
+
+      // Import MediaPipe processor
+      const { processVideoToPose } = await import('@/lib/poseProcessor');
+
+      // Process video with real MediaPipe Pose detection
+      const frames = await processVideoToPose(
+        video,
+        (progress) => {
+          setProcessingProgress(progress);
+        },
+        (frameIndex, totalFrames) => {
+          console.log(`Processing frame ${frameIndex + 1}/${totalFrames}`);
+        }
+      );
+
+      console.log(`Successfully processed ${frames.length} frames`);
+
+      // Filter out frames with no pose detected (optional - keep for continuity)
+      const validFrames = frames.filter(f => f.landmarks && f.landmarks.length > 0);
+      console.log(`${validFrames.length} frames with detected poses`);
+
+      if (validFrames.length === 0) {
+        setErrorMessage("No pose detected in video. Please ensure the person is clearly visible.");
+        setIsProcessing(false);
+        return;
+      }
+
+      // Use all frames (including those without detections for smooth playback)
+      setPoseData(frames);
+      setProcessingProgress(100);
+
+      setTimeout(() => {
+        setIsProcessing(false);
+      }, 500);
+
+    } catch (error) {
+      console.error("Error processing video:", error);
+      setErrorMessage(`Failed to process video: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setIsProcessing(false);
+    }
+  }, [videoFile]);
+
+
+  // Playback control
+  useEffect(() => {
+    if (isPlaying && poseData.length > 0) {
+      const fps = 25;
+      const interval = (1000 / fps) / playbackSpeed;
+
+      playbackIntervalRef.current = window.setInterval(() => {
+        setCurrentFrame(prev => {
+          if (prev >= poseData.length - 1) {
+            setIsPlaying(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, interval);
+
+      return () => {
+        if (playbackIntervalRef.current) {
+          clearInterval(playbackIntervalRef.current);
+        }
+      };
+    }
+  }, [isPlaying, playbackSpeed, poseData.length]);
+
+  // Camera preset controls
+  const setCameraPreset = useCallback((view: typeof cameraView) => {
+    setCameraView(view);
+    // Camera positions would be updated via the Camera component
+  }, []);
+
+  // Control functions
+  const togglePlayPause = () => setIsPlaying(!isPlaying);
+  const reset = () => {
+    setIsPlaying(false);
+    setCurrentFrame(0);
+  };
+  const stepForward = () => {
+    if (currentFrame < poseData.length - 1) {
+      setCurrentFrame(currentFrame + 1);
+    }
+  };
+  const stepBackward = () => {
+    if (currentFrame > 0) {
+      setCurrentFrame(currentFrame - 1);
     }
   };
 
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (videoUrl) {
+        URL.revokeObjectURL(videoUrl);
+      }
+      if (playbackIntervalRef.current) {
+        clearInterval(playbackIntervalRef.current);
+      }
+    };
+  }, [videoUrl]);
+
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       {/* Title */}
       <div className="text-center mb-8">
         <h2 className="text-3xl md:text-4xl font-bold text-indigo-400 mb-3">
-          {viewMode === 'skeletal' ? "3D Pose Animation Viewer" : "3D GLB Model Viewer"}
+          3D Cricket Pose Analysis
         </h2>
         <p className="text-gray-400 text-sm">
-          {viewMode === 'skeletal'
-            ? `Viewing skeletal animation (${skeletalData.length} frames) derived from 2D keypoints.`
-            : "View and interact with 3D cricket models."
-          }
+          Upload a cricket video to analyze batting technique in 3D
         </p>
       </div>
 
-      {/* Mode Switcher Buttons */}
-      <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center justify-center">
-        <Button
-          onClick={() => setViewMode('skeletal')}
-          variant={viewMode === 'skeletal' ? 'primary' : 'secondary'}
-          className={viewMode === 'skeletal' ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}
-        >
-          View Skeletal Animation
-        </Button>
+      {/* Upload Section */}
+      <div className="mb-6 bg-[#0f1f3a] border border-gray-800 rounded-xl p-6">
+        <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/*"
+            onChange={handleVideoUpload}
+            className="hidden"
+          />
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            variant="primary"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+            disabled={isProcessing}
+          >
+            {videoFile ? "Change Video" : "Upload Video"}
+          </Button>
 
-        <Button
-          onClick={() => setViewMode('glb')}
-          variant={viewMode === 'glb' ? 'primary' : 'secondary'}
-          className={viewMode === 'glb' ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}
-        >
-          View GLB Model
-        </Button>
+          {videoFile && !poseData.length && (
+            <Button
+              onClick={processVideo}
+              variant="primary"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={isProcessing}
+            >
+              {isProcessing ? `Processing... ${processingProgress}%` : "Analyze Video"}
+            </Button>
+          )}
 
-        {/* File Upload for GLB Mode */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".glb"
-          onChange={handleFileUpload}
-          className="hidden"
-        />
-        <Button
-          onClick={() => fileInputRef.current?.click()}
-          variant="secondary"
-          disabled={viewMode === 'skeletal'}
-          className={`${viewMode === 'skeletal' ? 'opacity-50 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
-        >
-          Upload New GLB File
-        </Button>
-      </div>
-
-      {/* 3D Canvas */}
-      <div className="bg-[#0f1f3a] border border-gray-800 rounded-xl overflow-hidden">
-        <div className="w-full h-[600px] relative">
-          <Canvas shadows>
-            {/* Camera: Adjusted position for a better skeletal view */}
-            <PerspectiveCamera
-              makeDefault
-              position={viewMode === 'skeletal' ? [2, 1, 3] : [5, 3, 5]}
-              fov={75}
-            />
-
-            {/* Lights */}
-            <ambientLight intensity={0.5} />
-            <directionalLight
-              position={[10, 10, 5]}
-              intensity={1}
-              castShadow
-              shadow-mapSize-width={2048}
-              shadow-mapSize-height={2048}
-            />
-            <pointLight position={[-10, -10, -5]} intensity={0.5} />
-            <spotLight
-              position={[0, 10, 0]}
-              angle={0.3}
-              penumbra={1}
-              intensity={0.5}
-              castShadow
-            />
-
-            {/* Environment for realistic reflections */}
-            <Environment preset="sunset" />
-
-            {/* 3D Content */}
-            <Suspense fallback={<Loader />}>
-              {viewMode === 'glb' && glbModelUrl && <Model url={glbModelUrl} />}
-
-              {viewMode === 'skeletal' && skeletalData.length > 0 && (
-                <AnimatedSkeleton
-                  poseData={skeletalData}
-                  boneConnections={COCO_BONES}
-                />
-              )}
-              {viewMode === 'skeletal' && skeletalData.length === 0 && (
-                // Fallback for when data is loading or empty
-                <mesh>
-                  <boxGeometry args={[0.05, 0.05, 0.05]} />
-                  <meshBasicMaterial color="red" />
-                </mesh>
-              )}
-            </Suspense>
-
-            {/* Grid Helper - centered at the origin */}
-            <gridHelper args={[5, 10, "#1f2937", "#374151"]} />
-
-            {/* Orbit Controls for mouse interaction */}
-            <OrbitControls
-              enableDamping
-              dampingFactor={0.05}
-              minDistance={2}
-              maxDistance={20}
-              maxPolarAngle={Math.PI / 2}
-            />
-          </Canvas>
-
-          {/* Loading Overlay */}
-          {isLoading && (
-            <div className="absolute inset-0 bg-[#0f1f3a]/80 flex items-center justify-center">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400 mx-auto mb-4"></div>
-                <p className="text-emerald-400">Loading 3D Model...</p>
-              </div>
-            </div>
+          {videoFile && (
+            <span className="text-gray-400 text-sm">
+              {videoFile.name} ({(videoFile.size / (1024 * 1024)).toFixed(2)} MB)
+            </span>
           )}
         </div>
 
-        {/* Controls Info (unchanged) */}
-        <div className="bg-[#0a1628] p-4 border-t border-gray-800">
-          <div className="flex flex-wrap gap-6 justify-center text-sm">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded bg-gray-800 flex items-center justify-center text-emerald-400">
-                🖱️
-              </div>
-              <span className="text-gray-400">Left Click + Drag to Rotate</span>
+        {/* Error Message */}
+        {errorMessage && (
+          <div className="mt-4 p-3 bg-red-900/20 border border-red-500/50 rounded-lg text-red-400 text-sm text-center">
+            {errorMessage}
+          </div>
+        )}
+
+        {/* Processing Progress */}
+        {isProcessing && (
+          <div className="mt-4">
+            <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
+              <div
+                className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${processingProgress}%` }}
+              />
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded bg-gray-800 flex items-center justify-center text-emerald-400">
-                🖱️
-              </div>
-              <span className="text-gray-400">Right Click + Drag to Pan</span>
+            <p className="text-center text-sm text-gray-400">
+              Processing with MediaPipe AI... {processingProgress}%
+            </p>
+            <p className="text-center text-xs text-gray-500 mt-1">
+              This may take a few moments depending on video length
+            </p>
+          </div>
+        )}
+
+        {/* Video requirements */}
+        <div className="mt-4 text-center text-xs text-gray-500">
+          <p className="mb-1">
+            <strong className="text-gray-400">Requirements:</strong> 10-60 seconds duration, max 50 MB file size
+          </p>
+          <p className="flex items-center justify-center gap-1 text-emerald-400">
+            <span>✓</span>
+            <span>Using MediaPipe AI for accurate pose detection</span>
+          </p>
+        </div>
+
+        {/* Hidden video element for processing */}
+        {videoUrl && (
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            className="hidden"
+            preload="metadata"
+          />
+        )}
+      </div>
+
+      {/* 3D Canvas */}
+      {poseData.length > 0 && (
+        <>
+          <div className="bg-[#0f1f3a] border border-gray-800 rounded-xl overflow-hidden mb-6">
+            <div className="w-full h-[600px] relative">
+              <Canvas shadows>
+                <PerspectiveCamera
+                  makeDefault
+                  position={
+                    cameraView === 'front' ? [0, 1.2, 5] :
+                      cameraView === 'side' ? [4, 1.2, -2] :
+                        cameraView === 'top' ? [0, 5, -2] :
+                          [4, 1.2, 0]
+                  }
+                  fov={50}
+                />
+
+                <SceneSetup />
+
+                <Suspense fallback={<Loader />}>
+                  <AnimatedSkeleton
+                    poseData={poseData}
+                    currentFrame={currentFrame}
+                    showSkeleton={showSkeleton}
+                    showBodyParts={showBodyParts}
+                    showBat={showBat}
+                    showHelmet={showHelmet}
+                  />
+                </Suspense>
+
+                <OrbitControls
+                  ref={cameraControlsRef}
+                  enableDamping
+                  dampingFactor={0.05}
+                  target={[0, 0.9, -2]}
+                  minDistance={2}
+                  maxDistance={20}
+                  maxPolarAngle={Math.PI / 2}
+                />
+              </Canvas>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded bg-gray-800 flex items-center justify-center text-emerald-400">
-                🖱️
+
+            {/* Controls Info */}
+            <div className="bg-[#0a1628] p-4 border-t border-gray-800">
+              <div className="flex flex-wrap gap-6 justify-center text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400">Left Click + Drag to Rotate</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400">Right Click + Drag to Pan</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400">Scroll to Zoom</span>
+                </div>
               </div>
-              <span className="text-gray-400">Scroll to Zoom</span>
             </div>
           </div>
+
+          {/* Playback Controls */}
+          <div className="bg-[#0f1f3a] border border-gray-800 rounded-xl p-6 mb-6">
+            <div className="space-y-6">
+              {/* Play/Pause/Step Controls */}
+              <div className="flex items-center justify-center gap-4">
+                <Button onClick={reset} variant="secondary" className="bg-gray-700 hover:bg-gray-600">
+                  Reset
+                </Button>
+                <Button onClick={stepBackward} variant="secondary" className="bg-gray-700 hover:bg-gray-600">
+                  ← Step
+                </Button>
+                <Button onClick={togglePlayPause} variant="primary" className="bg-indigo-600 hover:bg-indigo-700 min-w-[100px]">
+                  {isPlaying ? "Pause" : "Play"}
+                </Button>
+                <Button onClick={stepForward} variant="secondary" className="bg-gray-700 hover:bg-gray-600">
+                  Step →
+                </Button>
+              </div>
+
+              {/* Frame Scrubber */}
+              <div className="space-y-2">
+                <label className="text-sm text-gray-400">
+                  Frame: {currentFrame + 1} / {poseData.length}
+                  {poseData[currentFrame]?.timestamp &&
+                    ` (${poseData[currentFrame].timestamp.toFixed(2)}s)`
+                  }
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max={poseData.length - 1}
+                  value={currentFrame}
+                  onChange={(e) => setCurrentFrame(parseInt(e.target.value))}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+
+              {/* Speed Control */}
+              <div className="space-y-2">
+                <label className="text-sm text-gray-400">
+                  Playback Speed: {playbackSpeed.toFixed(2)}x
+                </label>
+                <input
+                  type="range"
+                  min="0.25"
+                  max="2"
+                  step="0.25"
+                  value={playbackSpeed}
+                  onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Camera & Display Options */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Camera Controls */}
+            <div className="bg-[#0f1f3a] border border-gray-800 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-indigo-400 mb-4">Camera View</h3>
+              <div className="grid grid-cols-2 gap-3">
+                {(['front', 'side', 'top', 'free'] as const).map((view) => (
+                  <Button
+                    key={view}
+                    onClick={() => setCameraPreset(view)}
+                    variant={cameraView === view ? 'primary' : 'secondary'}
+                    className={cameraView === view
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                      : 'bg-gray-700 hover:bg-gray-600 text-white'
+                    }
+                  >
+                    {view.charAt(0).toUpperCase() + view.slice(1)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Display Options */}
+            <div className="bg-[#0f1f3a] border border-gray-800 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-indigo-400 mb-4">Display Options</h3>
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showSkeleton}
+                    onChange={(e) => setShowSkeleton(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded"
+                  />
+                  <span>Show Skeleton</span>
+                </label>
+                <label className="flex items-center gap-3 text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showBodyParts}
+                    onChange={(e) => setShowBodyParts(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded"
+                  />
+                  <span>Show Body Parts</span>
+                </label>
+                <label className="flex items-center gap-3 text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showBat}
+                    onChange={(e) => setShowBat(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded"
+                  />
+                  <span>Show Cricket Bat</span>
+                </label>
+                <label className="flex items-center gap-3 text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showHelmet}
+                    onChange={(e) => setShowHelmet(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded"
+                  />
+                  <span>Show Helmet</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Empty State */}
+      {!videoFile && (
+        <div className="bg-[#0f1f3a] border border-gray-800 rounded-xl p-12 text-center">
+          <div className="text-6xl mb-4">🏏</div>
+          <h3 className="text-xl font-semibold text-gray-300 mb-2">
+            No Video Uploaded
+          </h3>
+          <p className="text-gray-500 mb-6">
+            Upload a cricket video to analyze batting technique in 3D
+          </p>
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            variant="primary"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            Upload Video
+          </Button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
