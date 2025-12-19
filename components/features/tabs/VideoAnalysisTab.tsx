@@ -145,22 +145,18 @@ export default function VideoAnalysisTab() {
       }
     }, [videoDuration]),
     onBedrockAnalytics: useCallback((analytics: any) => {
-      console.log('Received Bedrock analytics via WebSocket', analytics);
       const normalized = normalizeAnalyticsPayload(analytics);
       setBedrockAnalytics(normalized);
       // Do not mark analysis complete yet; wait until pose/keypoints are also ready
     }, []),
     onShotClassification: useCallback((shot: any) => {
-      console.log('Received shot classification via WebSocket', shot);
       setShotClassification(shot);
     }, []),
     onError: useCallback((errorMsg: string) => {
-      console.error('WebSocket error:', errorMsg);
       setError(errorMsg);
       setIsProcessing(false);
     }, []),
     onComplete: useCallback(() => {
-      console.log('Video processing complete');
       setIsProcessing(false);
     }, []),
   });
@@ -222,15 +218,7 @@ export default function VideoAnalysisTab() {
         throw new Error(`Failed to fetch analysis: ${response.status} - ${errorText}`);
       }
 
-      console.log('Response headers:', {
-        contentType: response.headers.get('content-type'),
-        contentLength: response.headers.get('content-length'),
-      });
-
-      // Parse JSON directly from response
       const jsonData = await response.json();
-
-      console.log('Analysis data loaded:', jsonData.length, 'frames');
       return jsonData;
     } catch (err: any) {
       console.error('Error fetching analysis data:', err);
@@ -258,11 +246,9 @@ export default function VideoAnalysisTab() {
 
       // Get the response as JSON first
       const responseData = await response.json();
-      console.log('Raw bedrock analytics response:', responseData);
 
       const analyticsData = normalizeAnalyticsPayload(responseData);
 
-      console.log('Parsed bedrock analytics:', analyticsData);
       return analyticsData;
     } catch (err: any) {
       console.error('Error fetching bedrock analytics:', err);
@@ -274,7 +260,6 @@ export default function VideoAnalysisTab() {
   const calculateFPS = useCallback((duration: number, frameCount: number) => {
     if (duration > 0 && frameCount > 0) {
       const fps = frameCount / duration;
-      console.log(`Calculated FPS: ${fps.toFixed(2)} (${frameCount} frames / ${duration.toFixed(2)}s)`);
       setCalculatedFPS(fps);
       return fps;
     }
@@ -287,7 +272,6 @@ export default function VideoAnalysisTab() {
     if (video && video.duration) {
       const duration = video.duration;
       setVideoDuration(duration);
-      console.log(`Video duration: ${duration.toFixed(2)}s`);
 
       // If we already have keypoints data, calculate FPS
       if (keypointsData.length > 0) {
@@ -335,7 +319,6 @@ export default function VideoAnalysisTab() {
       if (data) {
         setKeypointsData(data);
         setUploadStatus('Analysis data loaded successfully!');
-        console.log('Loaded', data.length, 'frames of keypoints data');
 
         // Calculate FPS if video is already loaded
         if (videoDuration > 0) {
@@ -378,7 +361,6 @@ export default function VideoAnalysisTab() {
       }
 
       const presignData = await presignResponse.json();
-      console.log('Presign response:', presignData);
       setUploadedVideoId(presignData.video_id);
       const presignedContentType = presignData.content_type || file.type || 'application/octet-stream';
 
@@ -413,7 +395,6 @@ export default function VideoAnalysisTab() {
       }
 
       const completeData = await completeResponse.json();
-      console.log('Upload-complete response:', completeData);
 
       setUploadStatus('Upload complete! Connecting to live updates...');
       setIsProcessing(true);
@@ -794,14 +775,11 @@ export default function VideoAnalysisTab() {
             {/* Validation Requirements Display */}
             <div className="mt-4 bg-slate-800/50 border border-slate-700 rounded-lg p-3 sm:p-4">
               <p className="text-slate-300 text-xs sm:text-sm font-semibold mb-2 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400" />
                 Video Requirements
               </p>
               <div className="space-y-2">
                 <div className="flex items-start gap-2">
-                  <div className="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center mt-0.5">
-                    <span className="text-emerald-400 text-xs font-bold">⏱</span>
-                  </div>
+
                   <div className="flex-1">
                     <p className="text-slate-300 text-xs sm:text-sm">
                       <span className="font-semibold text-emerald-400">Duration:</span> Between 5 to 60 seconds
@@ -809,9 +787,6 @@ export default function VideoAnalysisTab() {
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
-                  <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center mt-0.5">
-                    <span className="text-blue-400 text-xs font-bold">📦</span>
-                  </div>
                   <div className="flex-1">
                     <p className="text-slate-300 text-xs sm:text-sm">
                       <span className="font-semibold text-blue-400">File Size:</span> Maximum 50 MB

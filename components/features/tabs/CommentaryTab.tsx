@@ -591,7 +591,7 @@ export default function CommentaryTab() {
                   />
                 </div>
                 <span className="text-xs sm:text-sm text-gray-300 group-hover:text-emerald-400 transition-colors whitespace-nowrap">
-                  🎙️ Voice Commentary
+                  Voice Commentary
                 </span>
               </label>
 
