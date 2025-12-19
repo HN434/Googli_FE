@@ -14,6 +14,7 @@ import {
 import { scaleBatDetections, drawBatDetection } from "@/utils/batUtils";
 import { useVideoWebSocket } from "@/hooks/useVideoWebSocket";
 import ThreeDSkeletonView from "./ThreeDSkeletonView";
+import MediaPipe3DView from "./MediaPipe3DView";
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_BE_URL || "http://localhost:8000/api").replace(/\/$/, "");
 
@@ -116,12 +117,18 @@ export default function VideoAnalysisTab() {
   const [shotClassification, setShotClassification] = useState<any | null>(null);
   const [expandedDrill, setExpandedDrill] = useState<number | null>(null);
   const [wsEnabled, setWsEnabled] = useState(false);
-  const [viewMode, setViewMode] = useState<'video' | '3d'>('video');
+  const [viewMode, setViewMode] = useState<'video' | '3d' | 'mediapipe3d'>('video');
   const [is3DPlaying, setIs3DPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+
+  // MediaPipe processing state
+  const [mediaPipePoseData, setMediaPipePoseData] = useState<any[]>([]);
+  const [isMediaPipeProcessing, setIsMediaPipeProcessing] = useState(false);
+  const [mediaPipeProgress, setMediaPipeProgress] = useState(0);
+  const [mediaPipeError, setMediaPipeError] = useState<string>("");
 
   const isNonCricketVideo = bedrockAnalytics?.is_cricket_video === false;
   // Show 3D view and pose analytics by default (while loading) and only hide when explicitly not cricket
@@ -337,6 +344,59 @@ export default function VideoAnalysisTab() {
     }
   };
 
+  // Process video with MediaPipe for 3D view
+  const processMediaPipeVideo = useCallback(async (videoElement: HTMLVideoElement) => {
+    if (!videoElement) return;
+
+    setIsMediaPipeProcessing(true);
+    setMediaPipeProgress(0);
+    setMediaPipeError("");
+
+    try {
+      console.log('Starting MediaPipe pose detection in background...');
+
+      // Wait for video to load
+      if (videoElement.readyState < 2) {
+        await new Promise((resolve) => {
+          videoElement.addEventListener('loadeddata', () => resolve(null), { once: true });
+        });
+      }
+
+      // Import and run MediaPipe processor
+      const { processVideoToPose } = await import('@/lib/poseProcessor');
+
+      const frames = await processVideoToPose(
+        videoElement,
+        (progress) => {
+          setMediaPipeProgress(progress);
+        },
+        (frameIndex, totalFrames) => {
+          if (frameIndex % 25 === 0) {
+            console.log(`MediaPipe: Processing frame ${frameIndex + 1}/${totalFrames}`);
+          }
+        }
+      );
+
+      console.log(`MediaPipe completed: ${frames.length} frames processed`);
+
+      const validFrames = frames.filter(f => f.landmarks && f.landmarks.length > 0);
+      console.log(`${validFrames.length} frames with detected poses`);
+
+      if (validFrames.length === 0) {
+        setMediaPipeError("No pose detected in video. Please ensure the person is clearly visible.");
+      } else {
+        setMediaPipePoseData(frames);
+        setMediaPipeProgress(100);
+      }
+
+    } catch (error) {
+      console.error("MediaPipe processing error:", error);
+      setMediaPipeError(`Failed to process video: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsMediaPipeProcessing(false);
+    }
+  }, []);
+
   // Upload video to API
   const uploadVideo = async (file: File) => {
     setIsUploading(true);
@@ -461,6 +521,14 @@ export default function VideoAnalysisTab() {
         setVideoFile(file);
         setVideoUrl(url);
         uploadVideo(file);
+
+        // Start MediaPipe processing in parallel (background)
+        setTimeout(() => {
+          const video = videoRef.current;
+          if (video) {
+            processMediaPipeVideo(video);
+          }
+        }, 500); // Small delay to ensure video element is ready
       };
 
       tempVideo.onerror = () => {
@@ -587,7 +655,7 @@ export default function VideoAnalysisTab() {
   }, [viewMode, playbackSpeed, videoUrl]);
 
   const togglePlay = () => {
-    if (viewMode === '3d') {
+    if (viewMode === '3d' || viewMode === 'mediapipe3d') {
       // Toggle 3D animation independently
       setIs3DPlaying(!is3DPlaying);
     } else {
@@ -801,7 +869,7 @@ export default function VideoAnalysisTab() {
           <div className="relative flex flex-col items-center bg-black">
             {/* Tab Switcher - Only show when keypoints data is available AND it's a cricket video */}
             {keypointsData.length > 0 && canShow3DView && (
-              <div className="w-full bg-slate-800/90 border-b border-slate-700 p-3 sm:p-4 flex items-center justify-center gap-2 sm:gap-4">
+              <div className="w-full bg-slate-800/90 border-b border-slate-700 p-3 sm:p-4 flex items-center justify-center gap-2 sm:gap-4 flex-wrap">
                 <button
                   onClick={() => setViewMode('video')}
                   className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base ${viewMode === 'video'
@@ -813,20 +881,40 @@ export default function VideoAnalysisTab() {
                 </button>
                 {/* 3D view is only available when the video is explicitly classified as cricket */}
                 {canShow3DView && (
-                  <button
-                    onClick={() => setViewMode('3d')}
-                    className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base ${viewMode === '3d'
-                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
-                      : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
-                      }`}
-                  >
-                    3D View
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setViewMode('3d')}
+                      className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base ${viewMode === '3d'
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
+                        : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                        }`}
+                    >
+                      2D Skeleton
+                    </button>
+                    <button
+                      onClick={() => setViewMode('mediapipe3d')}
+                      disabled={isMediaPipeProcessing}
+                      className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all text-sm sm:text-base flex items-center gap-2 ${viewMode === 'mediapipe3d'
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
+                        : isMediaPipeProcessing
+                          ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                          : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                        }`}
+                    >
+                      {isMediaPipeProcessing && (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      )}
+                      3D View
+                      {isMediaPipeProcessing && (
+                        <span className="text-xs">({mediaPipeProgress}%)</span>
+                      )}
+                    </button>
+                  </>
                 )}
               </div>
             )}
 
-            {/* Conditional Rendering: Video or 3D View */}
+            {/* Conditional Rendering: Video, 3D View, or MediaPipe 3D */}
             {viewMode === 'video' ? (
               // Original Video Player with Canvas Overlay
               <div className="relative inline-block">
@@ -848,12 +936,22 @@ export default function VideoAnalysisTab() {
                   className="absolute top-0 left-0 w-full h-full pointer-events-none"
                 />
               </div>
-            ) : (
+            ) : viewMode === '3d' ? (
               // 3D Skeleton View - Independent Animation
               <ThreeDSkeletonView
                 keypointsData={keypointsData}
                 isPlaying={is3DPlaying}
                 fps={calculatedFPS}
+                playbackSpeed={playbackSpeed}
+              />
+            ) : (
+              // MediaPipe 3D View - AI-powered with body parts
+              <MediaPipe3DView
+                poseData={mediaPipePoseData}
+                isProcessing={isMediaPipeProcessing}
+                processingProgress={mediaPipeProgress}
+                error={mediaPipeError}
+                isPlaying={is3DPlaying}
                 playbackSpeed={playbackSpeed}
               />
             )}
@@ -934,21 +1032,23 @@ export default function VideoAnalysisTab() {
                   </span>
                 </div>
 
-                {/* Playback Speed Controls - Inline for Desktop */}
-                <div className="hidden md:flex items-center gap-1.5 bg-slate-800 rounded-lg p-1">
-                  {[0.5, 0.75, 1, 1.5, 2].map((speed) => (
-                    <button
-                      key={speed}
-                      onClick={() => handlePlaybackSpeedChange(speed)}
-                      className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${playbackSpeed === speed
-                        ? 'bg-emerald-500 text-white'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-700'
-                        }`}
-                    >
-                      {speed}x
-                    </button>
-                  ))}
-                </div>
+                {/* Playback Speed Controls - Inline for Desktop (hidden for MediaPipe 3D) */}
+                {viewMode !== 'mediapipe3d' && (
+                  <div className="hidden md:flex items-center gap-1.5 bg-slate-800 rounded-lg p-1">
+                    {[0.5, 0.75, 1, 1.5, 2].map((speed) => (
+                      <button
+                        key={speed}
+                        onClick={() => handlePlaybackSpeedChange(speed)}
+                        className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${playbackSpeed === speed
+                          ? 'bg-emerald-500 text-white'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                          }`}
+                      >
+                        {speed}x
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {/* New Video Button Row */}
                 <button
