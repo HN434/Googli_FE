@@ -150,6 +150,15 @@ export default function VideoAnalysisTab() {
       if (videoDuration > 0) {
         calculateFPS(videoDuration, keypoints.length);
       }
+
+      // Trigger MediaPipe processing now that we have keypoints with bbox data
+      console.log('Keypoints received - starting MediaPipe multi-person processing...');
+      setTimeout(() => {
+        const video = videoRef.current;
+        if (video && keypoints.length > 0) {
+          processMediaPipeVideo(video, keypoints);
+        }
+      }, 500);
     }, [videoDuration]),
     onBedrockAnalytics: useCallback((analytics: any) => {
       const normalized = normalizeAnalyticsPayload(analytics);
@@ -344,16 +353,17 @@ export default function VideoAnalysisTab() {
     }
   };
 
-  // Process video with MediaPipe for 3D view
-  const processMediaPipeVideo = useCallback(async (videoElement: HTMLVideoElement) => {
-    if (!videoElement) return;
+  // Process video with MediaPipe for 3D view (multi-person support)
+  const processMediaPipeVideo = useCallback(async (videoElement: HTMLVideoElement, poseFrames: PoseFrame[]) => {
+    if (!videoElement || !poseFrames || poseFrames.length === 0) return;
 
     setIsMediaPipeProcessing(true);
     setMediaPipeProgress(0);
     setMediaPipeError("");
 
     try {
-      console.log('Starting MediaPipe pose detection in background...');
+      console.log('Starting MediaPipe multi-person pose detection...');
+      console.log(`Processing ${poseFrames.length} frames with bounding box data...`);
 
       // Wait for video to load
       if (videoElement.readyState < 2) {
@@ -362,11 +372,12 @@ export default function VideoAnalysisTab() {
         });
       }
 
-      // Import and run MediaPipe processor
-      const { processVideoToPose } = await import('@/lib/poseProcessor');
+      // Import and run multi-person MediaPipe processor
+      const { processMultiPersonVideo } = await import('@/lib/multiPersonPoseProcessor');
 
-      const frames = await processVideoToPose(
+      const frames = await processMultiPersonVideo(
         videoElement,
+        poseFrames,  // Pass the pose frames with bbox data
         (progress) => {
           setMediaPipeProgress(progress);
         },
@@ -379,11 +390,18 @@ export default function VideoAnalysisTab() {
 
       console.log(`MediaPipe completed: ${frames.length} frames processed`);
 
-      const validFrames = frames.filter(f => f.landmarks && f.landmarks.length > 0);
-      console.log(`${validFrames.length} frames with detected poses`);
+      // Count frames with at least one detected person
+      const framesWithPoses = frames.filter(f => f.persons.some(p => p.landmarks));
+      console.log(`${framesWithPoses.length} frames with detected persons`);
 
-      if (validFrames.length === 0) {
-        setMediaPipeError("No pose detected in video. Please ensure the person is clearly visible.");
+      // Count total persons across all frames
+      const totalPersons = frames.reduce((sum, f) =>
+        sum + f.persons.filter(p => p.landmarks).length, 0
+      );
+      console.log(`Total ${totalPersons} person-poses detected across all frames`);
+
+      if (framesWithPoses.length === 0) {
+        setMediaPipeError("No poses detected. Please ensure persons are clearly visible.");
       } else {
         setMediaPipePoseData(frames);
         setMediaPipeProgress(100);

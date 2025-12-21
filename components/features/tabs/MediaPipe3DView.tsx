@@ -26,15 +26,21 @@ interface Landmark {
     visibility?: number;
 }
 
-interface MediaPipePoseFrame {
+interface PersonPoseData {
+    personId: number;
     landmarks?: Landmark[];
-    timestamp?: number;
+    bbox?: number[];
     confidence?: number;
-    frameIndex?: number;
+}
+
+interface MultiPersonPoseFrame {
+    frameIndex: number;
+    timestamp?: number;
+    persons: PersonPoseData[];
 }
 
 interface MediaPipe3DViewProps {
-    poseData: MediaPipePoseFrame[];
+    poseData: MultiPersonPoseFrame[];
     isProcessing: boolean;
     processingProgress: number;
     error: string;
@@ -58,7 +64,7 @@ function AnimatedSkeleton({
     showBat,
     showHelmet
 }: {
-    poseData: MediaPipePoseFrame[];
+    poseData: MultiPersonPoseFrame[];
     currentFrame: number;
     showSkeleton: boolean;
     showBodyParts: boolean;
@@ -68,183 +74,15 @@ function AnimatedSkeleton({
     if (!poseData || poseData.length === 0) return null;
 
     const frame = poseData[currentFrame];
-    const landmarks = frame?.landmarks;
+    if (!frame || !frame.persons || frame.persons.length === 0) return null;
 
-    if (!landmarks || landmarks.length === 0) return null;
-
-    const positions = landmarks.map(landmark => getLandmarkBasePosition(landmark));
-
-    // Joints
-    const joints = positions.map((position, i) => {
-        const landmark = landmarks[i];
-        const isVisible = landmark.visibility === undefined || landmark.visibility >= 0.1;
-
-        if (!isVisible) return null;
-
-        let jointRadius = 0.03;
-        if (i === 0) jointRadius = 0.06;
-        else if ([11, 12, 23, 24].includes(i)) jointRadius = 0.04;
-
-        const color = new THREE.Color();
-        const visibility = landmark.visibility ?? 0;
-        if (visibility > 0.8) color.setRGB(0, 1, 0);
-        else if (visibility > 0.5) color.setRGB(0, 1, 1);
-        else color.setRGB(1, 1, 0);
-
-        return (
-            <mesh key={`joint-${i}`} position={position} visible={showSkeleton}>
-                <sphereGeometry args={[jointRadius, 16, 16]} />
-                <meshPhongMaterial
-                    color={color}
-                    emissive={color}
-                    emissiveIntensity={0.4}
-                    shininess={80}
-                />
-            </mesh>
-        );
-    }).filter(Boolean);
-
-    // Bones
-    const bones = POSE_CONNECTIONS.map(([start, end], i) => {
-        const startLandmark = landmarks[start];
-        const endLandmark = landmarks[end];
-        const startVisible = startLandmark?.visibility === undefined || startLandmark?.visibility >= 0.1;
-        const endVisible = endLandmark?.visibility === undefined || endLandmark?.visibility >= 0.1;
-
-        if (!startVisible || !endVisible || !showSkeleton) return null;
-
-        return (
-            <Line
-                key={`bone-${i}`}
-                points={[positions[start], positions[end]]}
-                color="#00aaff"
-                lineWidth={3}
-                transparent
-                opacity={0.95}
-            />
-        );
-    }).filter(Boolean);
-
-    // Body parts helper
-    const createBodyPart = (startIdx: number, endIdx: number, radius: number, color: number, key: string) => {
-        const startLandmark = landmarks[startIdx];
-        const endLandmark = landmarks[endIdx];
-        const startVisible = startLandmark?.visibility === undefined || startLandmark?.visibility >= 0.1;
-        const endVisible = endLandmark?.visibility === undefined || endLandmark?.visibility >= 0.1;
-
-        if (!startVisible || !endVisible || !showBodyParts) return null;
-
-        const startPos = positions[startIdx];
-        const endPos = positions[endIdx];
-        const midpoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
-        const distance = startPos.distanceTo(endPos);
-        const direction = new THREE.Vector3().subVectors(endPos, startPos).normalize();
-        const axis = new THREE.Vector3(0, 1, 0);
-        const quaternion = new THREE.Quaternion().setFromUnitVectors(axis, direction);
-
-        return (
-            <mesh key={key} position={midpoint} quaternion={quaternion}>
-                <capsuleGeometry args={[radius, distance * 0.8, 8, 16]} />
-                <meshPhongMaterial color={color} shininess={10} />
-            </mesh>
-        );
-    };
-
-    const bodyParts = showBodyParts && (
-        <group>
-            {landmarks[0] && (landmarks[0].visibility ?? 0) >= 0.1 && (
-                <mesh position={positions[0]}>
-                    <sphereGeometry args={[0.11, 32, 32]} />
-                    <meshPhongMaterial color={0xFFDBB3} shininess={20} />
-                </mesh>
-            )}
-
-            {showHelmet && landmarks[0] && (landmarks[0].visibility ?? 0) >= 0.1 && (
-                <group position={[positions[0].x, positions[0].y + 0.02, positions[0].z]}>
-                    <mesh rotation={[Math.PI, 0, 0]}>
-                        <sphereGeometry args={[0.13, 32, 32, 0, Math.PI * 2, 0, Math.PI * 0.6]} />
-                        <meshPhongMaterial color={0x1a1a1a} shininess={50} />
-                    </mesh>
-                    <mesh position={[0, -0.02, 0.12]}>
-                        <boxGeometry args={[0.14, 0.12, 0.02]} />
-                        <meshPhongMaterial color={0x333333} transparent opacity={0.7} shininess={80} />
-                    </mesh>
-                </group>
-            )}
-
-            {landmarks[11] && landmarks[12] && landmarks[23] && landmarks[24] && (() => {
-                const shoulderCenter = new THREE.Vector3().addVectors(positions[11], positions[12]).multiplyScalar(0.5);
-                const hipCenter = new THREE.Vector3().addVectors(positions[23], positions[24]).multiplyScalar(0.5);
-                const torsoCenter = new THREE.Vector3().addVectors(shoulderCenter, hipCenter).multiplyScalar(0.5);
-                const direction = new THREE.Vector3().subVectors(shoulderCenter, hipCenter).normalize();
-                const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-                const height = shoulderCenter.distanceTo(hipCenter);
-
-                return (
-                    <mesh position={torsoCenter} quaternion={quaternion}>
-                        <capsuleGeometry args={[0.15, height * 0.8, 8, 16]} />
-                        <meshPhongMaterial color={0xFFFFFF} shininess={10} />
-                    </mesh>
-                );
-            })()}
-
-            {createBodyPart(11, 13, 0.05, 0xFFFFFF, 'left-upper-arm')}
-            {createBodyPart(12, 14, 0.05, 0xFFFFFF, 'right-upper-arm')}
-            {createBodyPart(13, 15, 0.04, 0xFFDBB3, 'left-forearm')}
-            {createBodyPart(14, 16, 0.04, 0xFFDBB3, 'right-forearm')}
-            {createBodyPart(23, 25, 0.08, 0xFFFFFF, 'left-thigh')}
-            {createBodyPart(24, 26, 0.08, 0xFFFFFF, 'right-thigh')}
-            {createBodyPart(25, 27, 0.06, 0xF0F0F0, 'left-shin')}
-            {createBodyPart(26, 28, 0.06, 0xF0F0F0, 'right-shin')}
-
-            {[15, 16].map(idx => landmarks[idx] && (landmarks[idx].visibility ?? 0) >= 0.1 && (
-                <mesh key={`hand-${idx}`} position={positions[idx]}>
-                    <sphereGeometry args={[0.06, 12, 12]} />
-                    <meshPhongMaterial color={0xF5F5DC} shininess={5} />
-                </mesh>
-            ))}
-
-            {[27, 28].map(idx => landmarks[idx] && (landmarks[idx].visibility ?? 0) >= 0.1 && (
-                <mesh key={`foot-${idx}`} position={positions[idx]}>
-                    <boxGeometry args={[0.08, 0.06, 0.12]} />
-                    <meshPhongMaterial color={0xFFFFFF} shininess={30} />
-                </mesh>
-            ))}
-        </group>
-    );
-
-    const cricketBat = showBat && landmarks[15] && landmarks[16] && (() => {
-        const leftVisible = (landmarks[15].visibility ?? 0) >= 0.1;
-        const rightVisible = (landmarks[16].visibility ?? 0) >= 0.1;
-
-        if (!leftVisible && !rightVisible) return null;
-
-        let batPosition: THREE.Vector3;
-        if (leftVisible && rightVisible) {
-            batPosition = positions[16].clone().multiplyScalar(0.7).add(positions[15].clone().multiplyScalar(0.3));
-            batPosition.y -= 0.1;
-        } else {
-            batPosition = (leftVisible ? positions[15] : positions[16]).clone();
-            batPosition.y -= 0.12;
-        }
-
-        return (
-            <group position={batPosition} rotation={[-Math.PI / 6, 0, 0]}>
-                <mesh position={[0, -0.43, 0]}>
-                    <boxGeometry args={[0.108, 0.86, 0.04]} />
-                    <meshPhongMaterial color={0xD4A574} shininess={15} />
-                </mesh>
-                <mesh position={[0, -0.3, 0.021]}>
-                    <planeGeometry args={[0.09, 0.15]} />
-                    <meshBasicMaterial color={0xA0826D} transparent opacity={0.3} />
-                </mesh>
-                <mesh position={[0, 0.265, 0]}>
-                    <cylinderGeometry args={[0.018, 0.025, 0.33, 12]} />
-                    <meshPhongMaterial color={0x8B4513} shininess={10} />
-                </mesh>
-            </group>
-        );
-    })();
+    // Colors for different persons
+    const personColors = [
+        0x10b981,  // Emerald (Person 1)
+        0x3b82f6,  // Blue (Person 2)
+        0xfbbf24,  // Amber (Person 3)
+        0xec4899,  // Pink (Person 4)
+    ];
 
     return (
         <group>
@@ -267,10 +105,161 @@ function AnimatedSkeleton({
                     <meshLambertMaterial color={0xffffff} />
                 </mesh>
             </group>
-            {joints}
-            {bones}
-            {bodyParts}
-            {/* {cricketBat} */}
+
+            {/* Render each person */}
+            {frame.persons.map((person, personIdx) => {
+                if (!person.landmarks || person.landmarks.length === 0) return null;
+
+                const landmarks = person.landmarks;
+                const positions = landmarks.map(lm => getLandmarkBasePosition(lm));
+                const color = personColors[personIdx % personColors.length];
+
+                // Offset each person horizontally to prevent overlap
+                const xOffset = personIdx * 0.6;
+
+                return (
+                    <group key={`person-${personIdx}`} position={[xOffset, 0, 0]}>
+                        {/* Joints for this person */}
+                        {showSkeleton && positions.map((position, i) => {
+                            const landmark = landmarks[i];
+                            const isVisible = landmark.visibility === undefined || landmark.visibility >= 0.1;
+
+                            if (!isVisible) return null;
+
+                            let jointRadius = 0.03;
+                            if (i === 0) jointRadius = 0.06;
+                            else if ([11, 12, 23, 24].includes(i)) jointRadius = 0.04;
+
+                            return (
+                                <mesh key={`joint-${i}`} position={position}>
+                                    <sphereGeometry args={[jointRadius, 16, 16]} />
+                                    <meshPhongMaterial
+                                        color={color}
+                                        emissive={color}
+                                        emissiveIntensity={0.4}
+                                        shininess={80}
+                                    />
+                                </mesh>
+                            );
+                        })}
+
+                        {/* Bones for this person */}
+                        {showSkeleton && POSE_CONNECTIONS.map(([start, end], i) => {
+                            const startLandmark = landmarks[start];
+                            const endLandmark = landmarks[end];
+                            const startVisible = startLandmark?.visibility === undefined || startLandmark?.visibility >= 0.1;
+                            const endVisible = endLandmark?.visibility === undefined || endLandmark?.visibility >= 0.1;
+
+                            if (!startVisible || !endVisible) return null;
+
+                            return (
+                                <Line
+                                    key={`bone-${i}`}
+                                    points={[positions[start], positions[end]]}
+                                    color={color}
+                                    lineWidth={3}
+                                    transparent
+                                    opacity={0.95}
+                                />
+                            );
+                        })}
+
+                        {/* Body parts for this person */}
+                        {showBodyParts && (
+                            <group>
+                                {/* Head */}
+                                {landmarks[0] && (landmarks[0].visibility ?? 0) >= 0.1 && (
+                                    <mesh position={positions[0]}>
+                                        <sphereGeometry args={[0.11, 32, 32]} />
+                                        <meshPhongMaterial color={0xFFDBB3} shininess={20} />
+                                    </mesh>
+                                )}
+
+                                {/* Helmet */}
+                                {showHelmet && landmarks[0] && (landmarks[0].visibility ?? 0) >= 0.1 && (
+                                    <group position={[positions[0].x, positions[0].y + 0.02, positions[0].z]}>
+                                        <mesh rotation={[Math.PI, 0, 0]}>
+                                            <sphereGeometry args={[0.13, 32, 32, 0, Math.PI * 2, 0, Math.PI * 0.6]} />
+                                            <meshPhongMaterial color={0x1a1a1a} shininess={50} />
+                                        </mesh>
+                                        <mesh position={[0, -0.02, 0.12]}>
+                                            <boxGeometry args={[0.14, 0.12, 0.02]} />
+                                            <meshPhongMaterial color={0x333333} transparent opacity={0.7} shininess={80} />
+                                        </mesh>
+                                    </group>
+                                )}
+
+                                {/* Torso */}
+                                {landmarks[11] && landmarks[12] && landmarks[23] && landmarks[24] && (() => {
+                                    const shoulderCenter = new THREE.Vector3().addVectors(positions[11], positions[12]).multiplyScalar(0.5);
+                                    const hipCenter = new THREE.Vector3().addVectors(positions[23], positions[24]).multiplyScalar(0.5);
+                                    const torsoCenter = new THREE.Vector3().addVectors(shoulderCenter, hipCenter).multiplyScalar(0.5);
+                                    const direction = new THREE.Vector3().subVectors(shoulderCenter, hipCenter).normalize();
+                                    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+                                    const height = shoulderCenter.distanceTo(hipCenter);
+
+                                    return (
+                                        <mesh position={torsoCenter} quaternion={quaternion}>
+                                            <capsuleGeometry args={[0.15, height * 0.8, 8, 16]} />
+                                            <meshPhongMaterial color={0xFFFFFF} shininess={10} />
+                                        </mesh>
+                                    );
+                                })()}
+
+                                {/* Arms and Legs - using helper function */}
+                                {[
+                                    { start: 11, end: 13, radius: 0.05, color: 0xFFFFFF, key: 'left-upper-arm' },
+                                    { start: 12, end: 14, radius: 0.05, color: 0xFFFFFF, key: 'right-upper-arm' },
+                                    { start: 13, end: 15, radius: 0.04, color: 0xFFDBB3, key: 'left-forearm' },
+                                    { start: 14, end: 16, radius: 0.04, color: 0xFFDBB3, key: 'right-forearm' },
+                                    { start: 23, end: 25, radius: 0.08, color: 0xFFFFFF, key: 'left-thigh' },
+                                    { start: 24, end: 26, radius: 0.08, color: 0xFFFFFF, key: 'right-thigh' },
+                                    { start: 25, end: 27, radius: 0.06, color: 0xF0F0F0, key: 'left-shin' },
+                                    { start: 26, end: 28, radius: 0.06, color: 0xF0F0F0, key: 'right-shin' },
+                                ].map(({ start, end, radius, color, key }) => {
+                                    const startLandmark = landmarks[start];
+                                    const endLandmark = landmarks[end];
+                                    const startVisible = startLandmark?.visibility === undefined || startLandmark?.visibility >= 0.1;
+                                    const endVisible = endLandmark?.visibility === undefined || endLandmark?.visibility >= 0.1;
+
+                                    if (!startVisible || !endVisible) return null;
+
+                                    const startPos = positions[start];
+                                    const endPos = positions[end];
+                                    const midpoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
+                                    const distance = startPos.distanceTo(endPos);
+                                    const direction = new THREE.Vector3().subVectors(endPos, startPos).normalize();
+                                    const axis = new THREE.Vector3(0, 1, 0);
+                                    const quaternion = new THREE.Quaternion().setFromUnitVectors(axis, direction);
+
+                                    return (
+                                        <mesh key={key} position={midpoint} quaternion={quaternion}>
+                                            <capsuleGeometry args={[radius, distance * 0.8, 8, 16]} />
+                                            <meshPhongMaterial color={color} shininess={10} />
+                                        </mesh>
+                                    );
+                                })}
+
+                                {/* Hands */}
+                                {[15, 16].map(idx => landmarks[idx] && (landmarks[idx].visibility ?? 0) >= 0.1 && (
+                                    <mesh key={`hand-${idx}`} position={positions[idx]}>
+                                        <sphereGeometry args={[0.06, 12, 12]} />
+                                        <meshPhongMaterial color={0xF5F5DC} shininess={5} />
+                                    </mesh>
+                                ))}
+
+                                {/* Feet */}
+                                {[27, 28].map(idx => landmarks[idx] && (landmarks[idx].visibility ?? 0) >= 0.1 && (
+                                    <mesh key={`foot-${idx}`} position={positions[idx]}>
+                                        <boxGeometry args={[0.08, 0.06, 0.12]} />
+                                        <meshPhongMaterial color={0xFFFFFF} shininess={30} />
+                                    </mesh>
+                                ))}
+                            </group>
+                        )}
+                    </group>
+                );
+            })}
         </group>
     );
 }
